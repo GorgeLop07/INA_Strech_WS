@@ -1,0 +1,30 @@
+mural_sim:
+  ros__parameters:
+    viewer: true                 # ventana de MuJoCo (false = sin ventana)
+    real_time: true
+    state_rate: 50.0
+    physics:
+      timestep: 0.004
+      iterations: 50
+      ls_iterations: 20
+      lidar: false               # true = simular el lidar (lento: ~2.4 ms por paso)
+    camera:                      # cámara de la cabeza (D435if), girada 90° como en el robot real
+      fovy: 42.0
+      width: 640
+      height: 360
+      rate: 10.0
+    scene:
+      wall_y: -0.75              # superficie del papel; el robot empieza en y = 0 mirando a +x
+      board_origin_x: 1.5        # el papel va de x = 1.5 a x = -1.5 (3 m)
+      paper_bottom_z: 0.18
+      robot_x: 0.0
+      robot_y: 0.0
+      robot_yaw: 0.0
+      grip_error: [0.004, -0.006, 0.012]   # error de agarre del pincel (m): la calibración lo debe encontrar
+      brush_spring_stiffness: 300.0
+      initial_color: azul
+    initial:
+      lift: 0.6
+      extension: 0.05
+      head_pan: -1.5708
+      head_tilt: -0.6

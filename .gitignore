@@ -1,0 +1,16 @@
+# Generados por colcon (se recrean con mbuild)
+build/
+install/
+log/
+
+# Entorno de Python local (se recrea con las instrucciones de entorno.sh)
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Registros de decisiones: en el piloto serán datos de niños, no van al repo
+datos/
+
+# Configuración personal del editor
+.vscode/

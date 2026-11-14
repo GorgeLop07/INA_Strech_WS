@@ -1,0 +1,8 @@
+# Estima dónde quedó la punta del pincel en la pinza, segmentándolo en la nube 3D.
+int32 samples            # cuántos cuadros promediar
+---
+bool success
+string message
+geometry_msgs/Vector3 offset   # punta del pincel en el marco link_grasp_center (m)
+float32 spread                 # dispersión entre cuadros (m)
+int32 points_used

@@ -1,0 +1,407 @@
+"""Nodo de control: pinta los trazos que manda la planeación.
+
+Acción /control/draw_stroke (DrawStroke). Cada trazo se ejecuta por fases:
+  1. acercar:  llevar la punta a unos cm del papel, frente al primer punto (pincel levantado)
+  2. apoyar:   empujar hasta comprimir un poco el resorte del pincel
+  3. pintar:   recorrer los puntos a la profundidad de apoyo
+  4. levantar: alejar la punta del papel (si el trazo lo pide)
+Cada fase es una trayectoria FollowJointTrajectory con base + elevador + brazo, igual que
+con el driver real del Stretch. La geometría se recalcula al inicio de cada fase con la TF
+actual, así los errores de seguimiento no se acumulan.
+
+También:
+  - /muralistas/stop (Bool): paro. Cancela el movimiento y, si el pincel está apoyado, lo levanta.
+  - /control/startup (Trigger): pose inicial, barrido de cabeza para ubicar el mural y
+    calibración del pincel con la percepción.
+  - /control/tip_board: punta del pincel en el marco del mural (10 Hz).
+"""
+
+import signal
+import threading
+import time
+
+import numpy as np
+import rclpy
+from control_msgs.action import FollowJointTrajectory
+from geometry_msgs.msg import PointStamped, Vector3Stamped
+from rclpy.action import ActionClient, ActionServer, CancelResponse, GoalResponse
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.duration import Duration
+from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
+from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile
+from rclpy.time import Time
+from sensor_msgs.msg import JointState
+from std_msgs.msg import Bool, String
+from std_srvs.srv import Trigger
+from tf2_ros import Buffer, TransformListener
+from trajectory_msgs.msg import JointTrajectoryPoint
+
+from muralistas_interfaces.action import DrawStroke
+from muralistas_interfaces.srv import CalibrateTool, SetBrushColor
+
+from .cartesian_mapper import CartesianMapper, Limits, densify, path_length
+
+
+def _duration(t):
+    sec = int(t)
+    return Duration(seconds=sec, nanoseconds=int((t - sec) * 1e9)).to_msg()
+
+
+class ControlNode(Node):
+    def __init__(self):
+        super().__init__('control')
+        p = self.declare_parameter
+        self.robot_action = p('robot_action', '/stretch_controller/follow_joint_trajectory').value
+        self.base_joint = p('joints.base', 'joint_mobile_base_translation').value
+        self.lift_joint = p('joints.lift', 'joint_lift').value
+        self.ext_joint = p('joints.extension', 'wrist_extension').value
+        self.board_frame = p('board_frame', 'board').value
+        self.base_frame = p('base_frame', 'base_link').value
+        self.grasp_frame = p('grasp_frame', 'link_grasp_center').value
+        self.tool_offset = np.array(p('tool_offset', [0.0, -0.089, 0.0]).value, dtype=float)
+        self.use_calibrated_tool = p('use_perception_tool_offset', True).value
+        self.hover = p('hover_distance', 0.03).value
+        self.press = p('press_depth', 0.008).value
+        self.draw_speed = p('draw_speed', 0.05).value
+        self.travel_speed = p('travel_speed', 0.10).value
+        self.approach_speed = p('approach_speed', 0.03).value
+        self.retract_on_stop = p('retract_on_stop', True).value
+        self.color_service = p('color_service', '/sim/set_brush_color').value
+        self.limits = Limits(lift_min=p('limits.lift_min', 0.05).value, lift_max=p('limits.lift_max', 1.08).value,
+                             ext_min=p('limits.ext_min', 0.0).value, ext_max=p('limits.ext_max', 0.50).value,
+                             base_max=p('limits.base_max', 1.6).value)
+        self.ready_pose = dict(zip(
+            ['joint_lift', 'wrist_extension', 'joint_wrist_yaw', 'joint_wrist_pitch', 'joint_wrist_roll'],
+            p('ready_pose', [0.6, 0.05, 0.0, 0.0, 0.0]).value))
+        scan = p('head_scan', [-1.35, -0.45, -1.35, -0.75, -1.57, -0.45, -1.57, -0.75, -1.8, -0.45, -1.8, -0.75]).value
+        self.head_scan = list(zip(scan[0::2], scan[1::2]))
+        self.head_work = tuple(p('head_work_pose', [-1.5708, -0.6]).value)
+        self.auto_startup = p('auto_startup', True).value
+        self.calibrate_on_startup = p('calibrate_on_startup', True).value
+
+        self.cb = ReentrantCallbackGroup()
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
+        self.robot = ActionClient(self, FollowJointTrajectory, self.robot_action, callback_group=self.cb)
+        self.color_client = self.create_client(SetBrushColor, self.color_service, callback_group=self.cb) \
+            if self.color_service else None
+        self.calib_client = self.create_client(CalibrateTool, '/perception/calibrate_tool', callback_group=self.cb)
+
+        self.joints = {}
+        self.create_subscription(JointState, '/joint_states', self._on_joints, 20, callback_group=self.cb)
+        latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        self.create_subscription(Vector3Stamped, '/perception/tool_offset', self._on_tool_offset, latched,
+                                 callback_group=self.cb)
+        self.create_subscription(Bool, '/muralistas/stop', self._on_stop, 10, callback_group=self.cb)
+        self.pub_tip = self.create_publisher(PointStamped, '/control/tip_board', 10)
+        self.pub_pen = self.create_publisher(Bool, '/control/pen_down', latched)
+        self.pub_status = self.create_publisher(String, '/control/status', latched)
+
+        self.server = ActionServer(self, DrawStroke, '/control/draw_stroke', execute_callback=self._execute,
+                                   goal_callback=self._on_goal, cancel_callback=lambda _: CancelResponse.ACCEPT,
+                                   callback_group=self.cb)
+        self.create_service(Trigger, '/control/startup', self._on_startup, callback_group=self.cb)
+        self.create_timer(0.1, self._publish_tip, callback_group=self.cb)
+
+        self.color = None
+        self.pen_down = False
+        self.stopped = False
+        self.busy = threading.Lock()          # un trazo a la vez
+        self._robot_goal = None
+        self._set_pen(False)
+        if self.auto_startup:
+            self._status('esperando')
+            threading.Thread(target=self._startup_sequence, daemon=True).start()
+        else:
+            self._status('listo')   # se saltó el arranque: el menú puede empezar a barrer
+
+    # --- Estado ---------------------------------------------------------------
+    def _on_joints(self, msg):
+        for n, q in zip(msg.name, msg.position):
+            self.joints[n] = q
+        if self.ext_joint not in msg.name and all(f'joint_arm_l{i}' in self.joints for i in range(4)):
+            self.joints[self.ext_joint] = sum(self.joints[f'joint_arm_l{i}'] for i in range(4))
+
+    def _on_tool_offset(self, msg):
+        if self.use_calibrated_tool:
+            self.tool_offset = np.array([msg.vector.x, msg.vector.y, msg.vector.z])
+            self.get_logger().info(f'Usando la punta calibrada por percepción: {np.round(self.tool_offset, 4)}')
+
+    def _status(self, text):
+        self.pub_status.publish(String(data=text))
+
+    def _idle_status(self):
+        """Al terminar un trazo: 'paro' si el paro sigue activo (para que el menú no barra), si no 'listo'."""
+        self._status('paro' if self.stopped else 'listo')
+
+    def _set_pen(self, down):
+        self.pen_down = down
+        self.pub_pen.publish(Bool(data=down))
+
+    def _lookup(self, target, source):
+        from muralistas_common.geometry import make_transform, quat_to_matrix
+        t = self.tf_buffer.lookup_transform(target, source, Time(), Duration(seconds=0.5))
+        tr, q = t.transform.translation, t.transform.rotation
+        return make_transform(quat_to_matrix((q.x, q.y, q.z, q.w)), [tr.x, tr.y, tr.z])
+
+    def _tip_base(self):
+        T = self._lookup(self.base_frame, self.grasp_frame)
+        return T[:3, :3] @ self.tool_offset + T[:3, 3]
+
+    def _geometry(self):
+        """Mapper con la TF y las articulaciones de este instante."""
+        T_base_board = self._lookup(self.base_frame, self.board_frame)
+        tip = self._tip_base()
+        lift, ext = self.joints.get(self.lift_joint), self.joints.get(self.ext_joint)
+        if lift is None or ext is None:
+            raise RuntimeError('Todavía no llegan /joint_states')
+        return CartesianMapper(T_base_board, tip, lift, ext, self.limits), tip
+
+    def _publish_tip(self):
+        try:
+            T_board_base = self._lookup(self.board_frame, self.base_frame)
+            tip = T_board_base[:3, :3] @ self._tip_base() + T_board_base[:3, 3]
+        except Exception:
+            return
+        msg = PointStamped()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = self.board_frame
+        msg.point.x, msg.point.y, msg.point.z = map(float, tip)
+        self.pub_tip.publish(msg)
+
+    # --- Trayectorias del robot --------------------------------------------
+    def _run_trajectory(self, names, points, goal_handle=None):
+        """Manda una trayectoria y espera. Devuelve 'ok', 'canceled', 'stopped' o 'error'."""
+        if not self.robot.wait_for_server(timeout_sec=3.0):
+            self.get_logger().error(f'No responde {self.robot_action}')
+            return 'error'
+        goal = FollowJointTrajectory.Goal()
+        goal.trajectory.joint_names = list(names)
+        goal.trajectory.points = [JointTrajectoryPoint(positions=[float(x) for x in q], time_from_start=_duration(t))
+                                  for t, q in points]
+        future = self.robot.send_goal_async(goal)
+        while not future.done():
+            time.sleep(0.01)
+        handle = future.result()
+        if not handle.accepted:
+            return 'error'
+        self._robot_goal = handle
+        result = handle.get_result_async()
+        outcome = 'ok'
+        while not result.done():
+            if self.stopped:
+                handle.cancel_goal_async()
+                outcome = 'stopped'
+                break
+            if goal_handle is not None and goal_handle.is_cancel_requested:
+                handle.cancel_goal_async()
+                outcome = 'canceled'
+                break
+            time.sleep(0.01)
+        if outcome != 'ok':
+            deadline = time.monotonic() + 2.0
+            while not result.done() and time.monotonic() < deadline:
+                time.sleep(0.01)
+        self._robot_goal = None
+        return outcome
+
+    def _cartesian_phase(self, board_points, w, speed, goal_handle=None):
+        mapper, tip = self._geometry()
+        traj = mapper.trajectory(board_points, w, speed, start_base=tip)
+        for _, joints in traj:
+            problems = mapper.check(joints)
+            if problems:
+                raise RuntimeError('Fuera de alcance: ' + '; '.join(problems))
+        names = [self.base_joint, self.lift_joint, self.ext_joint]
+        return self._run_trajectory(names, traj, goal_handle)
+
+    # --- Acción DrawStroke ----------------------------------------------------
+    def _on_goal(self, _):
+        if self.stopped:
+            self.get_logger().warn('Trazo rechazado: el paro está activo')
+            return GoalResponse.REJECT
+        return GoalResponse.ACCEPT
+
+    def _execute(self, goal_handle):
+        with self.busy:
+            return self._draw(goal_handle)
+
+    def _draw(self, goal_handle):
+        g = goal_handle.request
+        result = DrawStroke.Result()
+        feedback = DrawStroke.Feedback()
+        try:
+            mapper, tip = self._geometry()
+        except Exception as exc:
+            goal_handle.abort()
+            result.message = f'Aún no puedo pintar: {exc}'
+            self.get_logger().warn(result.message)
+            return result
+        tip_uv = mapper.base_to_board(tip)[:2]
+        pts = [(pt.x, pt.y) for pt in g.points]
+        if g.relative_to_current:
+            pts = [(tip_uv[0] + du, tip_uv[1] + dv) for du, dv in pts]
+        speed = g.speed if g.speed > 0 else self.draw_speed
+
+        if g.color and g.color != self.color:
+            self._change_color(g.color)
+
+        phases = []
+        if pts and self.pen_down and not g.relative_to_current:
+            phases.append(('levantar', [tuple(tip_uv)], self.hover, self.approach_speed, False))
+            pen = False
+        else:
+            pen = self.pen_down
+        if pts and not pen:
+            phases.append(('acercar', [pts[0]], self.hover, self.travel_speed, None))
+            phases.append(('apoyar', [pts[0]], -self.press, self.approach_speed, True))
+            draw_pts = densify(pts, 0.01)[1:]
+        elif pts:
+            draw_pts = densify([tuple(tip_uv)] + pts, 0.01)[1:]
+        else:
+            draw_pts = []
+        if draw_pts:
+            phases.append(('pintar', draw_pts, -self.press, speed, None))
+        if g.lift_at_end:
+            last = pts[-1] if pts else tuple(tip_uv)
+            phases.append(('levantar', [last], self.hover, self.approach_speed, False))
+
+        drawn = 0.0
+        for i, (name, board_pts, w, v, pen_after) in enumerate(phases):
+            self._status(name)
+            feedback.progress = i / max(1, len(phases))
+            feedback.pen_down = self.pen_down
+            goal_handle.publish_feedback(feedback)
+            try:
+                outcome = self._cartesian_phase(board_pts, w, v, goal_handle)
+            except Exception as exc:
+                self._status('error')
+                goal_handle.abort()
+                result.message = str(exc)
+                self.get_logger().warn(f'Trazo abortado en "{name}": {exc}')
+                return result
+            if outcome == 'ok':
+                if pen_after is not None:
+                    self._set_pen(pen_after)
+                if name == 'pintar':
+                    drawn = path_length(board_pts)
+                continue
+            # Cancelado (el niño detuvo el trazo libre) o paro
+            if outcome == 'canceled' and g.lift_at_end and self.pen_down:
+                self._cartesian_phase([tuple(self._current_uv())], self.hover, self.approach_speed)
+                self._set_pen(False)
+            self._idle_status()
+            result.message = 'Detenido' if outcome == 'canceled' else 'Paro'
+            result.drawn_length = float(drawn)
+            if outcome == 'canceled':
+                goal_handle.canceled()
+            else:
+                goal_handle.abort()
+            return result
+
+        self._idle_status()
+        feedback.progress = 1.0
+        goal_handle.publish_feedback(feedback)
+        goal_handle.succeed()
+        result.success = True
+        result.drawn_length = float(drawn)
+        result.message = 'Trazo terminado'
+        return result
+
+    def _current_uv(self):
+        mapper, tip = self._geometry()
+        return mapper.base_to_board(tip)[:2]
+
+    def _change_color(self, color):
+        if self.color_client is None:
+            self.color = color
+            return
+        if not self.color_client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().warn(f'No hay servicio de color ({self.color_service}); sigo con el mismo pincel')
+            return
+        future = self.color_client.call_async(SetBrushColor.Request(color=color))
+        while not future.done():
+            time.sleep(0.01)
+        if future.result().success:
+            self.color = color
+
+    # --- Paro -------------------------------------------------------------------
+    def _on_stop(self, msg):
+        if msg.data and not self.stopped:
+            self.stopped = True
+            self._status('paro')
+            self.get_logger().warn('PARO activado')
+            if self.retract_on_stop:
+                threading.Thread(target=self._retract_after_stop, daemon=True).start()
+        elif not msg.data and self.stopped:
+            self.stopped = False
+            self._status('listo')
+            self.get_logger().info('Paro liberado')
+
+    def _retract_after_stop(self):
+        time.sleep(0.3)   # deja que se cancele la trayectoria en curso
+        if not self.pen_down:
+            return
+        try:
+            mapper, tip = self._geometry()
+            p = tip + mapper.T[:3, 2] * (self.hover + self.press)   # alejarse en la normal del mural
+            s, lift, ext = mapper.joints_for(p)
+            was_stopped, self.stopped = self.stopped, False
+            self._run_trajectory([self.lift_joint, self.ext_joint], [(1.0, (lift, ext))])
+            self.stopped = was_stopped
+            self._set_pen(False)
+        except Exception as exc:
+            self.get_logger().error(f'No pude levantar el pincel tras el paro: {exc}')
+
+    # --- Arranque -----------------------------------------------------------
+    def _on_startup(self, request, response):
+        ok, msg = self._startup_sequence()
+        response.success, response.message = ok, msg
+        return response
+
+    def _startup_sequence(self):
+        deadline = time.monotonic() + 30.0
+        while not self.joints and time.monotonic() < deadline:
+            time.sleep(0.2)
+        if not self.joints:
+            return False, 'No llegan /joint_states'
+        self._status('pose inicial')
+        names = list(self.ready_pose) + ['joint_head_pan', 'joint_head_tilt']
+        self._run_trajectory(names, [(3.0, list(self.ready_pose.values()) + list(self.head_work))])
+        self._status('buscando el mural')
+        for pan, tilt in self.head_scan:
+            self._run_trajectory(['joint_head_pan', 'joint_head_tilt'], [(1.2, (pan, tilt))])
+            time.sleep(0.6)
+        self._run_trajectory(['joint_head_pan', 'joint_head_tilt'], [(1.2, self.head_work)])
+        try:
+            self._lookup(self.base_frame, self.board_frame)
+            found = True
+        except Exception:
+            found = False
+        msg = 'Mural ubicado' if found else 'No encontré el mural (revisa que se vean los ArUco)'
+        if self.calibrate_on_startup and self.calib_client.wait_for_service(timeout_sec=3.0):
+            self._status('calibrando pincel')
+            future = self.calib_client.call_async(CalibrateTool.Request(samples=15))
+            while not future.done():
+                time.sleep(0.05)
+            msg += ' | ' + future.result().message
+        self._status('listo' if found else 'sin mural')
+        self.get_logger().info(f'Arranque: {msg}')
+        return found, msg
+
+
+def main():
+    rclpy.init()
+    node = ControlNode()
+    executor = MultiThreadedExecutor(num_threads=6)
+    executor.add_node(node)
+    try:
+        executor.spin()
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass
+    finally:
+        signal.signal(signal.SIGINT, signal.SIG_IGN)   # un segundo Ctrl+C no interrumpe el cierre
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()

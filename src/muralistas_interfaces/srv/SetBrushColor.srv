@@ -1,0 +1,6 @@
+# En simulación cambia el color de la punta. En el robot real sería girar la muñeca
+# hacia el marcador de ese color o ir a la estación de marcadores.
+string color
+---
+bool success
+string message

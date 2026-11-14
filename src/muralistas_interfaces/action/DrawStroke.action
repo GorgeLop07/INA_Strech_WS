@@ -1,0 +1,14 @@
+# Pintar un trazo. Los puntos van en el marco del mural (x, y en metros; z se ignora).
+string color
+geometry_msgs/Point[] points
+bool relative_to_current   # los puntos son desplazamientos desde la punta actual (trazo libre)
+bool lift_at_end           # levantar el pincel al terminar (o al cancelar)
+float32 speed              # m/s de la punta sobre el papel (0 = valor por defecto)
+---
+bool success
+string message
+float32 drawn_length
+---
+float32 progress           # 0 a 1
+geometry_msgs/Point tip    # punta actual en el marco del mural
+bool pen_down

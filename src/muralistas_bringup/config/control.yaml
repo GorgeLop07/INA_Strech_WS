@@ -1,0 +1,31 @@
+control:
+  ros__parameters:
+    robot_action: /stretch_controller/follow_joint_trajectory   # igual que el driver de stretch_ros2
+    joints:
+      base: joint_mobile_base_translation    # verificar el nombre en el robot real (modo trajectory)
+      lift: joint_lift
+      extension: wrist_extension
+    board_frame: board            # "board" = estimado por percepción; "board_gt" = verdad de la simulación
+    base_frame: base_link
+    grasp_frame: link_grasp_center
+    tool_offset: [0.0, -0.089, 0.0]          # punta nominal del pincel en link_grasp_center (m)
+    use_perception_tool_offset: true         # si la percepción calibra la punta, se usa esa
+    hover_distance: 0.03          # distancia al papel con el pincel levantado (m)
+    press_depth: 0.008            # cuánto se comprime el resorte al apoyar (m)
+    draw_speed: 0.05              # m/s de la punta pintando
+    travel_speed: 0.10            # m/s con el pincel levantado
+    approach_speed: 0.03          # m/s al apoyar y levantar
+    retract_on_stop: true
+    color_service: /sim/set_brush_color      # en el robot real: "" (o el servicio del cambio de marcador)
+    limits:
+      lift_min: 0.05
+      lift_max: 1.08
+      ext_min: 0.0
+      ext_max: 0.50
+      base_max: 1.6
+    ready_pose: [0.6, 0.05, 0.0, 0.0, 0.0]   # elevador, brazo, muñeca yaw/pitch/roll
+    head_work_pose: [-1.5708, -0.6]          # cabeza mirando al pincel y al mural
+    # Barrido de cabeza al arrancar para ubicar el mural (pares pan, tilt)
+    head_scan: [-1.35, -0.45, -1.35, -0.75, -1.57, -0.45, -1.57, -0.75, -1.8, -0.45, -1.8, -0.75]
+    auto_startup: true
+    calibrate_on_startup: true

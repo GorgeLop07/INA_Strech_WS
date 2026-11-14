@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>muralistas_sim</name>
+  <version>0.1.0</version>
+  <description>Simulación MuJoCo del Stretch 3 pintando un mural (usa el modelo de hello-robot/stretch_mujoco).</description>
+  <maintainer email="jorgelolpez07@gmail.com">Robotics for Inclusion Workshop</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>builtin_interfaces</exec_depend>
+  <exec_depend>control_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>rosgraph_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>visualization_msgs</exec_depend>
+  <exec_depend>muralistas_interfaces</exec_depend>
+  <exec_depend>muralistas_common</exec_depend>
+  <!-- mujoco, numpy<2 y opencv se instalan en el .venv del workspace (ver README) -->
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

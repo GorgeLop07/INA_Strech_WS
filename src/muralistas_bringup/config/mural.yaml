@@ -1,0 +1,14 @@
+# Geometría del mural: la comparten la simulación, la percepción, la planeación y la pantalla.
+# Si cambia el papel real o la posición de los ArUco, se cambia solo aquí.
+/**:
+  ros__parameters:
+    mural:
+      width: 3.0            # largo del papel (m)
+      height: 1.0           # alto del papel (m)
+      margin: 0.12          # franja del borde con los marcadores (m)
+      marker_size: 0.08     # lado del cuadro negro del ArUco (m), DICT_4X4_50
+      marker_spacing: 0.5   # un marcador cada 0.5 m, abajo (IDs 0..6) y arriba (IDs 10..16)
+      top_id_offset: 10
+      rows: 3               # cuadrícula de casillas para elegir el lugar
+      cols: 4
+      shape_fill: 0.8       # qué tanto de la casilla ocupa una figura

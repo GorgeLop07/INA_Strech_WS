@@ -1,0 +1,149 @@
+Panels:
+  - Class: rviz_common/Displays
+    Help Height: 0
+    Name: Displays
+    Property Tree Widget:
+      Expanded: ~
+      Splitter Ratio: 0.55
+    Tree Height: 400
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Piso
+      Enabled: true
+      Cell Size: 0.5
+      Plane Cell Count: 12
+      Color: 160; 160; 164
+      Reference Frame: <Fixed Frame>
+      Value: true
+    - Class: rviz_default_plugins/TF
+      Name: TF
+      Enabled: true
+      Marker Scale: 0.25
+      Show Arrows: false
+      Show Axes: true
+      Show Names: true
+      Frames:
+        All Enabled: true
+      Value: true
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Nube 3D (cámara de la cabeza)
+      Enabled: true
+      Topic:
+        Value: /perception/points
+        Depth: 5
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+      Color Transformer: RGB8
+      Style: Points
+      Size (Pixels): 3
+      Decay Time: 0
+      Position Transformer: XYZ
+      Use Fixed Frame: true
+      Value: true
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Pincel segmentado
+      Enabled: true
+      Topic:
+        Value: /perception/brush_points
+        Depth: 5
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+      Color Transformer: FlatColor
+      Color: 255; 0; 255
+      Style: Points
+      Size (Pixels): 5
+      Decay Time: 0
+      Position Transformer: XYZ
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Name: Mural y pincel (percepción)
+      Enabled: true
+      Topic:
+        Value: /perception/markers
+        Depth: 5
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Name: Tinta
+      Enabled: true
+      Topic:
+        Value: /mural/ink_markers
+        Depth: 1
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Durability Policy: Transient Local
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Name: Trazo planeado
+      Enabled: true
+      Topic:
+        Value: /planning/preview
+        Depth: 5
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+      Value: true
+    - Class: rviz_default_plugins/Image
+      Name: Cámara (ArUco y pincel)
+      Enabled: true
+      Topic:
+        Value: /perception/debug_image
+        Depth: 2
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+      Normalize Range: true
+      Value: true
+    - Class: rviz_default_plugins/Image
+      Name: Mural (lienzo)
+      Enabled: true
+      Topic:
+        Value: /mural/canvas
+        Depth: 1
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Durability Policy: Transient Local
+      Normalize Range: true
+      Value: true
+  Enabled: true
+  Global Options:
+    Background Color: 40; 44; 52
+    Fixed Frame: odom
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/Measure
+  Transformation:
+    Current:
+      Class: rviz_default_plugins/TF
+  Value: true
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 2.8
+      Focal Point:
+        X: 0.0
+        Y: -0.55
+        Z: 0.65
+      Pitch: 0.30
+      Yaw: 1.05
+      Near Clip Distance: 0.01
+      Target Frame: <Fixed Frame>
+      Value: Orbit (rviz)
+    Saved: ~
+Window Geometry:
+  Height: 900
+  Width: 1500
+  Hide Left Dock: false
+  Hide Right Dock: true
