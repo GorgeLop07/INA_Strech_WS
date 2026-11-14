@@ -1,0 +1,16 @@
+# Cambios a control.yaml para el Stretch real (stretch_core en modo trajectory).
+# Nombres confirmados en el código del driver del robot (stretch-se3-3075, 14-nov-2026):
+#   trajectory_components.py: joint_lift, wrist_extension, joint_wrist_yaw/pitch/roll,
+#   joint_head_pan/tilt, stretch_gripper y la base como 'position' (multi_dof_trajectory).
+#   command_groups.py: 'joint_mobile_base_translation' ya no se acepta.
+control:
+  ros__parameters:
+    robot_driver: stretch       # 2 puntos mínimo por meta y la base por multi_dof_trajectory
+    joints:
+      base: position
+      lift: joint_lift
+      extension: wrist_extension
+    color_service: ""           # sin cambio de color automático en el robot real
+    # Por confirmar con el marcador puesto:
+    #   grasp_frame: link_grasp_center   (la prueba --solo-leer dice si existe)
+    #   tool_offset: [0.0, -0.089, 0.0]  (se mide en la prueba de la pose del marcador)

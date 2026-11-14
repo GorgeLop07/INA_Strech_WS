@@ -23,7 +23,7 @@ import time
 import numpy as np
 import rclpy
 from control_msgs.action import FollowJointTrajectory
-from geometry_msgs.msg import PointStamped, Vector3Stamped
+from geometry_msgs.msg import PointStamped, Transform, Vector3Stamped
 from rclpy.action import ActionClient, ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.duration import Duration
@@ -35,7 +35,7 @@ from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool, String
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformListener
-from trajectory_msgs.msg import JointTrajectoryPoint
+from trajectory_msgs.msg import JointTrajectoryPoint, MultiDOFJointTrajectoryPoint
 
 from muralistas_interfaces.action import DrawStroke
 from muralistas_interfaces.srv import CalibrateTool, SetBrushColor
@@ -48,11 +48,22 @@ def _duration(t):
     return Duration(seconds=sec, nanoseconds=int((t - sec) * 1e9)).to_msg()
 
 
+def _base_point(t, x):
+    """Punto de la base para multi_dof_trajectory: avanzar x metros (sin girar)."""
+    tf = Transform()
+    tf.translation.x = float(x)
+    tf.rotation.w = 1.0
+    return MultiDOFJointTrajectoryPoint(transforms=[tf], time_from_start=_duration(t))
+
+
 class ControlNode(Node):
     def __init__(self):
         super().__init__('control')
         p = self.declare_parameter
         self.robot_action = p('robot_action', '/stretch_controller/follow_joint_trajectory').value
+        # 'sim': el simulador acepta la base como articulación y metas de un solo punto.
+        # 'stretch': driver real en modo trajectory (ver _run_trajectory).
+        self.robot_driver = p('robot_driver', 'sim').value
         self.base_joint = p('joints.base', 'joint_mobile_base_translation').value
         self.lift_joint = p('joints.lift', 'joint_lift').value
         self.ext_joint = p('joints.extension', 'wrist_extension').value
@@ -176,10 +187,13 @@ class ControlNode(Node):
         if not self.robot.wait_for_server(timeout_sec=3.0):
             self.get_logger().error(f'No responde {self.robot_action}')
             return 'error'
-        goal = FollowJointTrajectory.Goal()
-        goal.trajectory.joint_names = list(names)
-        goal.trajectory.points = [JointTrajectoryPoint(positions=[float(x) for x in q], time_from_start=_duration(t))
-                                  for t, q in points]
+        if self.robot_driver == 'stretch':
+            goal = self._stretch_goal(names, points)
+        else:
+            goal = FollowJointTrajectory.Goal()
+            goal.trajectory.joint_names = list(names)
+            goal.trajectory.points = [JointTrajectoryPoint(positions=[float(x) for x in q], time_from_start=_duration(t))
+                                      for t, q in points]
         future = self.robot.send_goal_async(goal)
         while not future.done():
             time.sleep(0.01)
@@ -205,6 +219,34 @@ class ControlNode(Node):
                 time.sleep(0.01)
         self._robot_goal = None
         return outcome
+
+    def _stretch_goal(self, names, points):
+        """Meta para el driver real (stretch_core, modo trajectory). Lo que pide distinto al simulador:
+          - cada trayectoria necesita al menos 2 puntos y el primero, en t=0, debe ser la posición
+            actual (fail_if_motor_initial_point_is_not_trajectory_first_point);
+          - la base no es una articulación: va en multi_dof_trajectory como 'position' (x, y, θ),
+            relativa a donde está la base al arrancar la trayectoria.
+        """
+        goal = FollowJointTrajectory.Goal()
+        names = list(names)
+        base_i = names.index(self.base_joint) if self.base_joint in names else None
+        joint_names = [n for i, n in enumerate(names) if i != base_i]
+        if joint_names:
+            missing = [n for n in joint_names if n not in self.joints]
+            if missing:
+                raise RuntimeError(f'No llegan /joint_states de {missing}')
+            goal.trajectory.joint_names = joint_names
+            goal.trajectory.points = [JointTrajectoryPoint(positions=[float(self.joints[n]) for n in joint_names],
+                                                           time_from_start=_duration(0.0))]
+            goal.trajectory.points += [
+                JointTrajectoryPoint(positions=[float(x) for i, x in enumerate(q) if i != base_i],
+                                     time_from_start=_duration(t))
+                for t, q in points]
+        if base_i is not None:
+            goal.multi_dof_trajectory.joint_names = ['position']
+            goal.multi_dof_trajectory.points = [_base_point(0.0, 0.0)]
+            goal.multi_dof_trajectory.points += [_base_point(t, q[base_i]) for t, q in points]
+        return goal
 
     def _cartesian_phase(self, board_points, w, speed, goal_handle=None):
         mapper, tip = self._geometry()

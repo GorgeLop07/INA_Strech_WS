@@ -19,6 +19,7 @@ setup(
     entry_points={
         'console_scripts': [
             'control = muralistas_control.control_node:main',
+            'prueba_articulaciones = muralistas_control.prueba_articulaciones:main',
         ],
     },
 )
