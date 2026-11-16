@@ -1,7 +1,7 @@
 # Cómo probarlo: simulación, robot real y siguientes pasos
 
 Fecha: 15-nov-2026. Esta guía cubre todo lo que se agregó siguiendo la planeación:
-- pizarrón de 2.40 × 1.18 m (parametrizable) con 6 ArUco de 15 cm y zona de trabajo de 80 × 60 cm;
+- pizarrón de 2.095 × 1.18 m (medido el 16-nov; parametrizable) con 6 ArUco de 15.5 cm y zona de trabajo de 80 × 60 cm;
 - barrido de cabeza calculado con las medidas del pizarrón, con el brazo abajo para que no tape;
 - marcador azul, sin colores;
 - modos de interacción S, J1, J2 y J3 y niveles de asistencia;
@@ -19,7 +19,7 @@ Fecha: 15-nov-2026. Esta guía cubre todo lo que se agregó siguiendo la planeac
 | Pruebas unitarias | ✅ Pasan las 49 |
 | Compilación | ✅ Compilan los 8 paquetes |
 | Launch | ✅ Arman los nodos correctos en cada combinación (revisado sin lanzarlos) |
-| Simulación, S1 (arranque con el pizarrón nuevo) | ✅ Pasa con 240 × 118 (15-nov, corrida de Jorge): 6 de 6 marcadores al primer barrido |
+| Simulación, S1 (arranque con el pizarrón nuevo) | ✅ Pasó con 240 × 118 (15-nov, corrida de Jorge): 6 de 6 al primer barrido. ⏳ Falta repetirla con las medidas reales (209.5 × 118, ArUco de 15.5 cm) |
 | Simulación, S2 a S5 | ✅ Pasaron (15-nov) con el pizarrón de 1.5 × 1.0; conviene repetir S2 y S3 con la zona nueva (casillas de 20 cm, plantillas de 40 cm) |
 | Simulación, S6 (J3 con el Pro Controller) y S7 (calibración) | ✅ Probadas a mano por Jorge (15-nov); salió un error en el retardo del switch, ya corregido |
 | Pantallas nuevas (fantasma, calibración) | ✅ Abiertas en S4–S7 (capturas en `docs/`) |
@@ -53,8 +53,8 @@ ros2 launch muralistas_bringup sim_mural.launch.py
 ```
 
 **Qué esperar:**
-- En MuJoCo, un pizarrón de 2.40 × 1.18 m con 6 ArUco de 15 cm (las 4 esquinas y el centro de abajo y de arriba), centrado frente al robot. Su borde de abajo queda a 0.20 m (`bottom_height`), así que la zona de trabajo (80 × 60 cm) cae entre 0.45 y 1.05 m de alto.
-- En el log del control: `Barrido de cabeza (pan, tilt): (-0.60, -0.32), (-1.57, -0.93), (-1.57, -0.03), (-2.54, -0.32)`. Son 4 poses: esquinas de la izquierda, centro abajo, centro arriba y esquinas de la derecha.
+- En MuJoCo, un pizarrón de 2.095 × 1.18 m con 6 ArUco de 15.5 cm (las 4 esquinas y el centro de abajo y de arriba), centrado frente al robot. Su borde de abajo queda a 0.20 m (`bottom_height`), así que la zona de trabajo (80 × 60 cm) cae entre 0.45 y 1.05 m de alto.
+- En el log del control: `Barrido de cabeza (pan, tilt): (-0.67, -0.35), (-1.57, -0.93), (-1.57, -0.03), (-2.47, -0.35)`. Son 4 poses: esquinas de la izquierda, centro abajo, centro arriba y esquinas de la derecha.
 - En unos 40 s el robot hace su pose inicial, **baja el elevador a 0.2 m** y recoge el brazo (para no tapar los ArUco de abajo), barre la cabeza por esas 4 poses y regresa el brazo a la pose de trabajo. Calibra el pincel y el estado queda en **"listo"**.
 - La pantalla del barrido empieza en **"Elige una figura"**, sin pregunta de color.
 
@@ -293,9 +293,12 @@ python3 -c "import cv2; print(cv2.__version__, hasattr(cv2.aruco, 'ArucoDetector
     ros2 run muralistas_perception generar_arucos --salida ~/arucos
     ```
 
-    Salen 6 hojas con cuadros de 15 cm (`marker_size`). Imprime al 100% y mide que el cuadro negro mida 15.0 cm.
-2. **Pegarlos** con su centro a 10 cm (`margin/2`) del borde de abajo o de arriba, en sentido antihorario: ID 0 abajo a la izquierda, 1 abajo al centro, 2 abajo a la derecha, 3 arriba a la derecha, 4 arriba al centro, 5 arriba a la izquierda. Los de las esquinas van también a 10 cm del borde lateral; los del centro, a la mitad del ancho (1.20 m). Cada hoja dice dónde va.
-3. **Medir la altura del pizarrón.** Mide la altura del borde de abajo sobre el piso y ponla en `bottom_height` en `config/mural.yaml`. Con eso la zona de trabajo se coloca sola entre 0.45 y 1.05 m del piso. Si el pizarrón no mide 2.40 × 1.18 m, sigue la sección 3.
+    Salen 6 hojas con cuadros de 15.5 cm (`marker_size`). Imprime al 100% y mide el cuadro negro: lo que mida va en `marker_size` (los impresos el 16-nov miden 15.5 cm).
+2. **Pegarlos** con su centro a 10 cm (`margin/2`) del borde de abajo o de arriba, en sentido antihorario: ID 0 abajo a la izquierda, 1 abajo al centro, 2 abajo a la derecha, 3 arriba a la derecha, 4 arriba al centro, 5 arriba a la izquierda. Los de las esquinas van también a 10 cm del borde lateral; los del centro, a la mitad del ancho (1.0475 m). Cada hoja dice dónde va.
+    - **Orientación:** pega cada hoja derecha, con la regla y el texto *debajo* del cuadro y leyéndose horizontal. El estimador usa qué esquina del marcador es cuál; un marcador girado 90° descuadra el pizarrón.
+    - **Blanco alrededor:** el cuadro negro necesita blanco a su alrededor, idealmente 2.5 cm por lado. Si la superficie es oscura o de cristal (como el azul del 16-nov), pega cada marcador sobre una hoja blanca entera para no quedarte con 1 cm de borde.
+    - **Cristal:** cuida que no se refleje una lámpara o ventana encima de un marcador. La cámara de profundidad casi no ve el vidrio: `check_plane` puede salir raro (no detiene nada), y el azul del fondo puede confundir la detección de la punta azul en la calibración.
+3. **Medir la altura del pizarrón.** Mide la altura del borde de abajo sobre el piso y ponla en `bottom_height` en `config/mural.yaml`. Con eso la zona de trabajo se coloca sola entre 0.45 y 1.05 m del piso. Si el pizarrón no mide 2.095 × 1.18 m, sigue la sección 3.
 4. **Colocar el robot** paralelo al pizarrón, centrado a lo ancho, con el centro de la base a 0.75 m de la pared (`scan.wall_distance` en `config/control.yaml`; si lo pones a otra distancia, cámbialo ahí).
 
 ### F2. Driver y cámara (no se mueve nada)
@@ -338,7 +341,7 @@ ros2 launch muralistas_bringup real_mural.launch.py parte:=robot
 
 **Qué se mueve:**
 - El robot va a la pose inicial (elevador 0.6 m, brazo casi recogido, muñeca derecha).
-- Baja el elevador a 0.2 m, barre la cabeza (4 poses con el pizarrón de 240 × 118) y regresa el brazo.
+- Baja el elevador a 0.2 m, barre la cabeza (4 poses con el pizarrón de 209.5 × 118) y regresa el brazo.
 - Si ve el marcador, calibra la punta.
 - La base no se mueve.
 
@@ -392,14 +395,14 @@ Es el mismo flujo que S3 y S5. El pizarrón no se borra solo: entre intentos lo 
 
 ## 3. Si el pizarrón cambia de tamaño
 
-El pizarrón de pruebas es de **2.40 × 1.18 m** y así viene configurado. Para otro tamaño casi todo se ajusta solo: la percepción, la simulación, el planeador, las pantallas, el control y **el barrido de la cabeza** salen de `config/mural.yaml`. Los ArUco del centro se recolocan solos a la mitad del ancho, y la simulación centra el pizarrón y lo pone a `bottom_height`.
+El pizarrón de pruebas es de **2.095 × 1.18 m** (con ArUco de 15.5 cm) y así viene configurado. Para otro tamaño casi todo se ajusta solo: la percepción, la simulación, el planeador, las pantallas, el control y **el barrido de la cabeza** salen de `config/mural.yaml`. Los ArUco del centro se recolocan solos a la mitad del ancho, y la simulación centra el pizarrón y lo pone a `bottom_height`.
 
 ### Lo que hay que cambiar
 
 En `config/mural.yaml`:
 
 ```yaml
-      width: 2.40           # ancho (m)
+      width: 2.095          # ancho (m)
       height: 1.18          # alto (m)
       bottom_height: 0.20   # altura del borde de abajo sobre el piso (m), medida en el salón
 ```
@@ -421,7 +424,7 @@ Después: `mbuild && source entorno.sh` y S1 (o F3 en el robot). En el log salen
     - la cuadrícula del barrido (4 × 3) da casillas de 20 cm; más columnas alargan el barrido del switch.
 - **Para una zona más grande** (por ejemplo 1.20 × 0.60 m), cambia `work_width`/`work_height`. Para mantener casillas cuadradas, ajusta también `cols`/`rows` (casilla = ancho / columnas; 1.20 m con 6 columnas da 20 cm). `template_size` es el lado de las plantillas de rehabilitación.
 - **Si el pizarrón está muy alto** (borde de abajo arriba de ~0.45 m), la zona ya no cabe a su altura: se recorta sola para no pisar el margen de los marcadores y queda más arriba de lo planeado. El robot no alcanza a pintar arriba de ~1.20 m.
-- **Tamaño de los marcadores:** con 2.40 m de ancho, las esquinas quedan a ~1.35 m de la cámara y a 56° de lado, por eso son de 15 cm. Para un pizarrón chico (1.5 m o menos) bastan 10 cm: `marker_size: 0.10` y `margin: 0.14` (el margen es el marcador más 2.5 cm de blanco de cada lado).
+- **Tamaño de los marcadores:** con 2.1–2.4 m de ancho, las esquinas quedan a ~1.2–1.35 m de la cámara y a 52–56° de lado, por eso son de ~15 cm (`marker_size` es lo que mida el cuadro negro impreso). Para un pizarrón chico (1.5 m o menos) bastan 10 cm: `marker_size: 0.10` y `margin: 0.14` (el margen es el marcador más 2.5 cm de blanco de cada lado).
 
 ### Cómo se calcula el barrido
 
@@ -429,6 +432,7 @@ Después: `mbuild && source entorno.sh` y S1 (o F3 en el robot). En el log salen
 
 | Pizarrón | Poses (pan, tilt) |
 |---|---|
+| 2.095 × 1.18, borde a 0.20 m, marcadores de 15.5 cm | (−0.67, −0.35), (−1.57, −0.93), (−1.57, −0.03), (−2.47, −0.35) |
 | 2.40 × 1.18, borde a 0.20 m | (−0.60, −0.32), (−1.57, −0.93), (−1.57, −0.03), (−2.54, −0.32) |
 | 2.00 × 1.50, borde a 0.10 m | 6 poses: izquierda, centro y derecha, cada una abajo y arriba |
 | 1.50 × 1.00, borde a 0.225 m, marcadores de 10 cm | (−0.83, −0.46), (−1.57, −0.55), (−2.31, −0.46) |
@@ -443,21 +447,21 @@ Para poner las poses a mano: `head_scan_auto: false` y la lista en `head_scan`.
 
 - **J3 continuo** (opcional en la planeación): mantener el switch para pintar mientras el joystick dibuja varios trazos de una vez. **No está implementado**; J3 funciona igual que J2.
 - **Borrar en J1 en modo libre** (quieto en el inicio del fantasma) choca con dibujar una figura cerrada. Para cerrar una figura en J1, hay que parar a 2 cm o más del inicio.
-- **Altura del pizarrón:** el primer pizarrón real empezaba a 0.925 m del piso, y el robot solo alcanza con la punta hasta ~1.19 m (elevador a 1.08 m + 0.115 m de la pinza): no cabía la zona de trabajo. Se va a probar con otro de 240 × 118 que empieza desde el piso. `bottom_height` se queda en 0.20, como en la simulación. Si el real empieza en 0, la zona se recorre sola hacia abajo para no pisar el margen y queda entre ~0.38 y 0.98 m del piso (dentro del alcance). Regla: el borde de abajo del pizarrón tiene que estar a 0.45 m o menos.
-- **El pizarrón de 240 × 118 pasó S1 en simulación** (6 de 6). Falta S2–S5 con la zona nueva y todo en el robot.
+- **Altura del pizarrón:** el primer pizarrón real empezaba a 0.925 m del piso, y el robot solo alcanza con la punta hasta ~1.19 m (elevador a 1.08 m + 0.115 m de la pinza): no cabía la zona de trabajo. Se va a probar con otro de 209.5 × 118 que empieza desde el piso. `bottom_height` se queda en 0.20, como en la simulación. Si el real empieza en 0, la zona se recorre sola hacia abajo para no pisar el margen y queda entre ~0.38 y 0.98 m del piso (dentro del alcance). Regla: el borde de abajo del pizarrón tiene que estar a 0.45 m o menos.
+- **El pizarrón de 240 × 118 pasó S1 en simulación** (6 de 6). Falta repetir S1 con las medidas reales (209.5 × 118, ArUco de 15.5 cm), S2–S5 con la zona nueva y todo en el robot.
 - **Los umbrales de la calibración, la asistencia y las estrellas** son propuestas de la planeación: falta validarlos con terapeutas.
 - **Las métricas de suavidad** se calculan sobre todo el intento, no sobre cada movimiento. Con el teclado no significan nada.
 - **La tinta real** no se mide con la cámara: se compara el fantasma contra la punta del robot.
 
 ## 5. Siguientes pasos
 
-1. **S1 con el pizarrón de 240 × 118:** que el barrido vea los 6 ArUco. Luego repetir S2 y S3 con la zona nueva y las métricas de precisión (las del README son del papel de 3 m).
+1. **S1 con el pizarrón de 209.5 × 118:** que el barrido vea los 6 ArUco. Luego repetir S2 y S3 con la zona nueva y las métricas de precisión (las del README son del papel de 3 m).
 2. **Robot real, F0 a F6.** Ahí se miden los valores que faltan:
     - `tool_offset` del plumón;
     - `press_depth`;
     - el HSV del azul con la luz del salón;
     - la altura del pizarrón (`bottom_height`) y la distancia del robot a la pared (`scan.wall_distance`).
-3. **Commit** del pizarrón de 240 × 118, los 6 ArUco, el barrido calculado y esta guía (sin coautor). Lo anterior ya está en `c6a0078`.
+3. **Commit** del pizarrón de 209.5 × 118, los 6 ArUco, el barrido calculado y esta guía (sin coautor). Lo anterior ya está en `c6a0078`.
 4. **Pendientes de la planeación** que no puedo decidir yo:
     - terapeuta que valide umbrales y duración;
     - nivel MACS de cada niño;

@@ -33,7 +33,7 @@ source entorno.sh && mbuild
 **Nivel de asistencia** (alta, media, baja): cuánta ayuda da el sistema. Filtro del cursor, velocidad, imán hacia la plantilla, `t_quieto` y velocidad del robot en S. Lo fija la calibración y baja con la regla de progresión (5 de los últimos 8 intentos con 2 estrellas o más).
 
 **Modos de juego:**
-- **Figuras** (solo S): figuras preestablecidas en una cuadrícula de 4 × 3 casillas de 20 cm (zona de trabajo de 80 × 60 cm en un pizarrón de 2.40 × 1.18 m).
+- **Figuras** (solo S): figuras preestablecidas en una cuadrícula de 4 × 3 casillas de 20 cm (zona de trabajo de 80 × 60 cm en un pizarrón de 2.095 × 1.18 m).
 - **Libre**: en S, flecha que gira y el robot pinta hasta que el niño presiona. Con joystick, el niño elige *levantado* o *pegado*, traza un **fantasma** en la pantalla y lo confirma; el robot se desplaza o pinta.
 - **Rehabilitación**: plantillas por etapa (0 línea, 1 cuadrado, 2 círculo, 3 casa). En S el niño detiene el trazo en la esquina; con joystick traza encima de la plantilla. Cada intento se califica con estrellas.
 
@@ -97,7 +97,7 @@ ros2 launch muralistas_bringup sim_mural.launch.py perfil:=datos/perfil_nino_01_
 
 ## Resultados en simulación (13-nov-2026, papel de 3 m con 14 ArUco)
 
-Se midieron antes del cambio al pizarrón de 2.40 × 1.18 m con 6 ArUco. Hay que repetirlos con el pizarrón nuevo (ver [PRUEBAS.md](PRUEBAS.md)).
+Se midieron antes del cambio al pizarrón de 2.095 × 1.18 m con 6 ArUco. Hay que repetirlos con el pizarrón nuevo (ver [PRUEBAS.md](PRUEBAS.md)).
 
 | Qué | Resultado |
 |---|---|

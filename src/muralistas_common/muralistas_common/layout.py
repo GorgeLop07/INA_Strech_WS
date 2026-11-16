@@ -22,11 +22,11 @@ from dataclasses import dataclass
 
 @dataclass
 class MuralLayout:
-    width: float = 2.40           # ancho del pizarrón (m)
+    width: float = 2.095          # ancho del pizarrón (m)
     height: float = 1.18          # alto del pizarrón (m)
     bottom_height: float = 0.20   # altura del borde de abajo sobre el piso (m)
     margin: float = 0.20          # franja del borde para los marcadores (m)
-    marker_size: float = 0.15     # lado del cuadro negro del ArUco (m)
+    marker_size: float = 0.155    # lado del cuadro negro del ArUco (m)
     markers: str = 'seis'         # seis (esquinas + centros, IDs 0..5) | esquinas (0..3) | franjas
     marker_spacing: float = 0.5   # solo franjas: distancia entre marcadores (m)
     top_id_offset: int = 10       # solo franjas: los marcadores de arriba empiezan en este ID

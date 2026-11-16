@@ -1,7 +1,7 @@
 """Genera los ArUco del pizarrón para imprimir a tamaño real (DICT_4X4_50, IDs 0 a 5).
 
   ros2 run muralistas_perception generar_arucos                 # 15 cm, en ./arucos/
-  ros2 run muralistas_perception generar_arucos --lado 0.15 --dpi 300 --salida ~/arucos
+  ros2 run muralistas_perception generar_arucos --lado 0.155 --dpi 300 --salida ~/arucos
   ros2 run muralistas_perception generar_arucos --distribucion esquinas     # solo los 4 de las esquinas
 
 Cada PNG lleva el ID y una regla de 5 cm: imprímelo al 100% (sin "ajustar a la página") y mide

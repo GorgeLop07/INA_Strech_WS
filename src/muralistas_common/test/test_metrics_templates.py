@@ -36,12 +36,12 @@ def test_layout_seis_marcadores_y_zona_de_trabajo():
     L = MuralLayout()
     pos = L.marker_positions()
     assert set(pos) == {0, 1, 2, 3, 4, 5}
-    assert math.isclose(pos[1][0], 1.20) and math.isclose(pos[4][0], 1.20)      # los del centro
+    assert math.isclose(pos[1][0], L.width / 2) and math.isclose(pos[4][0], L.width / 2)   # los del centro
     assert L.marker_names()[1] == 'abajo-centro' and L.marker_names()[5] == 'arriba-izquierda'
     assert set(MuralLayout(markers='esquinas').marker_positions()) == {0, 1, 2, 3}
-    u0, v0, u1, v1 = L.work_rect()                                       # pizarrón de 240 x 118
+    u0, v0, u1, v1 = L.work_rect()                                       # pizarrón de 209.5 x 118
     assert math.isclose(u1 - u0, 0.80) and math.isclose(v1 - v0, 0.60)
-    assert math.isclose((u0 + u1) / 2, 1.20)
+    assert math.isclose((u0 + u1) / 2, L.width / 2)
     assert math.isclose(L.bottom_height + v0, 0.45) and math.isclose(L.bottom_height + v1, 1.05)   # del piso
     a, b, c, d = L.cell_rect(0, 0)
     assert math.isclose(c - a, 0.20) and math.isclose(d - b, 0.20)       # casillas de 20 cm
@@ -115,7 +115,8 @@ def _seen(layout, poses, half_fov=(21.0, 34.0), wall=0.75, cam=1.30):
 
 
 def test_head_scan_ve_todos_los_marcadores():
-    for layout in (MuralLayout(),                                                       # 240 x 118
+    for layout in (MuralLayout(),                                                       # 209.5 x 118
+                   MuralLayout(width=2.40),                                             # 240 x 118
                    MuralLayout(width=1.5, height=1.0, margin=0.14, marker_size=0.10),   # el de antes
                    MuralLayout(width=2.0, height=1.5, bottom_height=0.10)):
         poses = head_scan_for(layout)
