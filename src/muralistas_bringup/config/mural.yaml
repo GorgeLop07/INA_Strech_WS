@@ -4,8 +4,13 @@
   ros__parameters:
     mural:
       width: 2.095          # ancho del pizarrón (m), medido: 209.5 cm
-      height: 1.18          # alto del pizarrón (m)
-      bottom_height: 0.20   # altura del borde de abajo sobre el piso (m): MEDIRLA en el salón
+      # El pizarrón real empieza en el piso; aquí "pizarrón" es el rectángulo que forman los ArUco
+      # con su centro a margin/2 (10 cm) de cada borde. Medido el 16-nov (cuadro negro, sin el blanco):
+      #   piso -> borde de abajo de los ArUco de abajo  = 21.5 cm  (centro a 29.25 cm)
+      #   piso -> borde de arriba de los ArUco de arriba = 118 cm  (centro a 110.25 cm)
+      # => bottom_height = 0.2925 - 0.10 = 0.1925 ; height = (1.1025 - 0.2925) + 0.20 = 1.01
+      height: 1.01          # alto (m)
+      bottom_height: 0.1925 # altura del borde de abajo sobre el piso (m)
       margin: 0.20          # franja del borde con los marcadores (m): marcador + 2.5 cm de blanco por lado
       # 6 ArUco: esquinas y centro de abajo y de arriba, antihorario desde abajo a la izquierda:
       # 0 abajo-izq, 1 abajo-centro, 2 abajo-der, 3 arriba-der, 4 arriba-centro, 5 arriba-izq.
@@ -13,12 +18,15 @@
       markers: seis
       marker_size: 0.155    # lado del cuadro negro del ArUco (m), DICT_4X4_50
       # Zona de trabajo: donde se dibuja en todos los modos. 80 x 60 cm, centrada a lo ancho y
-      # con su centro a 0.75 m del piso (queda entre 0.45 y 1.05 m: al alcance del niño y del
-      # elevador). Su lugar en el pizarrón sale de work_center_z y bottom_height.
+      # a la mitad entre las dos filas de ArUco: centro a 0.6975 m del piso (queda entre 0.3975 y
+      # 0.9975 m, sin tapar ningún marcador). Su lugar en el pizarrón sale de work_center_z y bottom_height.
       work_width: 0.80
       work_height: 0.60
-      work_center_z: 0.75   # altura del centro de la zona sobre el piso (m)
-      work_center_u: -1.0   # centro de la zona en el pizarrón (m); -1 = centrada a lo ancho
+      work_center_z: 0.6975 # altura del centro de la zona sobre el piso (m)
+      # En medio del cristal hay una junta: la zona va del lado de los ArUco 1-2 / 4-3. Su centro
+      # ideal (1.521, entre 4 y 3) la sacaría del margen; 1.495 la deja pegada a él (u 1.095 a 1.895),
+      # 4.75 cm a la derecha de la junta y 2.25 cm antes del cuadro del ArUco 2/3.
+      work_center_u: 1.495  # centro de la zona en el pizarrón (m); -1 = centrada a lo ancho
       work_center_v: -1.0   # -1 = sale de work_center_z - bottom_height
       rows: 3               # cuadrícula del barrido (modo S): 4 x 3 casillas de 20 cm
       cols: 4
