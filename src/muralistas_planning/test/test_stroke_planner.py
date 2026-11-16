@@ -55,7 +55,8 @@ def test_fantasma_se_simplifica_redondea_y_queda_en_la_zona():
     assert all(u0 - 1e-9 <= u <= u1 + 1e-9 and v0 - 1e-9 <= v <= v1 + 1e-9 for u, v in pts)
     assert all(math.dist(a, b) <= 0.0101 for a, b in zip(pts[:-1], pts[1:]))
     assert math.dist(pts[0], raw[0]) < 1e-9
-    assert process_ghost(L, [(0.75, 0.5)]) == [(0.75, 0.5)]          # un solo punto: apoyar ahí
+    c = ((u0 + u1) / 2, (v0 + v1) / 2)
+    assert process_ghost(L, [c]) == [c]          # un solo punto: apoyar ahí
 
 
 def test_tramo_libre_con_largo():

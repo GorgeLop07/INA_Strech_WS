@@ -3,16 +3,24 @@
 /**:
   ros__parameters:
     mural:
-      width: 1.5            # ancho del pizarrón (m)
-      height: 1.0           # alto del pizarrón (m)
-      margin: 0.14          # franja del borde con los marcadores (m)
-      markers: esquinas     # 4 ArUco en las esquinas: ID 0 abajo-izq, 1 abajo-der, 2 arriba-der, 3 arriba-izq
-      marker_size: 0.10     # lado del cuadro negro del ArUco (m), DICT_4X4_50
-      work_width: 0.60      # zona de trabajo: donde se dibuja en todos los modos (m)
-      work_height: 0.45
-      work_center_u: -1.0   # centro de la zona en el pizarrón (m); -1 = centrada
-      work_center_v: -1.0
-      rows: 3               # cuadrícula del barrido (modo S): 4 x 3 casillas de 15 cm
+      width: 2.40           # ancho del pizarrón (m)
+      height: 1.18          # alto del pizarrón (m)
+      bottom_height: 0.20   # altura del borde de abajo sobre el piso (m): MEDIRLA en el salón
+      margin: 0.20          # franja del borde con los marcadores (m): marcador + 2.5 cm de blanco por lado
+      # 6 ArUco: esquinas y centro de abajo y de arriba, antihorario desde abajo a la izquierda:
+      # 0 abajo-izq, 1 abajo-centro, 2 abajo-der, 3 arriba-der, 4 arriba-centro, 5 arriba-izq.
+      # Con "esquinas" quedan solo 4 (0 abajo-izq, 1 abajo-der, 2 arriba-der, 3 arriba-izq).
+      markers: seis
+      marker_size: 0.15     # lado del cuadro negro del ArUco (m), DICT_4X4_50
+      # Zona de trabajo: donde se dibuja en todos los modos. 80 x 60 cm, centrada a lo ancho y
+      # con su centro a 0.75 m del piso (queda entre 0.45 y 1.05 m: al alcance del niño y del
+      # elevador). Su lugar en el pizarrón sale de work_center_z y bottom_height.
+      work_width: 0.80
+      work_height: 0.60
+      work_center_z: 0.75   # altura del centro de la zona sobre el piso (m)
+      work_center_u: -1.0   # centro de la zona en el pizarrón (m); -1 = centrada a lo ancho
+      work_center_v: -1.0   # -1 = sale de work_center_z - bottom_height
+      rows: 3               # cuadrícula del barrido (modo S): 4 x 3 casillas de 20 cm
       cols: 4
       shape_fill: 0.8       # qué tanto de la casilla ocupa una figura
-      template_size: 0.30   # lado de las plantillas de rehabilitación (m)
+      template_size: 0.40   # lado de las plantillas de rehabilitación (m)

@@ -33,7 +33,7 @@ source entorno.sh && mbuild
 **Nivel de asistencia** (alta, media, baja): cuánta ayuda da el sistema. Filtro del cursor, velocidad, imán hacia la plantilla, `t_quieto` y velocidad del robot en S. Lo fija la calibración y baja con la regla de progresión (5 de los últimos 8 intentos con 2 estrellas o más).
 
 **Modos de juego:**
-- **Figuras** (solo S): figuras preestablecidas en una cuadrícula de 4 × 3 casillas de 15 cm.
+- **Figuras** (solo S): figuras preestablecidas en una cuadrícula de 4 × 3 casillas de 20 cm (zona de trabajo de 80 × 60 cm en un pizarrón de 2.40 × 1.18 m).
 - **Libre**: en S, flecha que gira y el robot pinta hasta que el niño presiona. Con joystick, el niño elige *levantado* o *pegado*, traza un **fantasma** en la pantalla y lo confirma; el robot se desplaza o pinta.
 - **Rehabilitación**: plantillas por etapa (0 línea, 1 cuadrado, 2 círculo, 3 casa). En S el niño detiene el trazo en la esquina; con joystick traza encima de la plantilla. Cada intento se califica con estrellas.
 
@@ -56,7 +56,7 @@ ros2 launch muralistas_bringup sim_mural.launch.py perfil:=datos/perfil_nino_01_
 
 **Al arrancar (~40 s)** el robot:
 1. se pone en su pose inicial;
-2. mira a la izquierda, al centro y a la derecha para ubicar los 4 ArUco del pizarrón;
+2. baja el elevador (para que el brazo no tape los marcadores de abajo) y barre la cabeza para ubicar los 6 ArUco del pizarrón; las poses del barrido se calculan con las medidas de `config/mural.yaml`;
 3. calibra la punta del marcador con la nube 3D;
 4. queda "listo". La interacción no empieza hasta entonces.
 
@@ -86,7 +86,7 @@ ros2 launch muralistas_bringup sim_mural.launch.py perfil:=datos/perfil_nino_01_
 |---|---|
 | `muralistas_interfaces` | Mensajes, servicios y acciones (`StrokeRequest`, `ScanState`, `GhostState`, `Attempt`, `Board`, `Decision`, `DrawStroke`, `CalibrateTool`, `SetBrushColor`) |
 | `muralistas_common` | Sin ROS: pizarrón y zona de trabajo (`layout`), figuras, plantillas, métricas (LDLJ, SPARC, MSJ, calificación, progresión), niveles de asistencia |
-| `muralistas_sim` | MuJoCo: Stretch 3, pared, pizarrón con 4 ArUco, pincel con resorte y tinta. Expone las mismas interfaces que el driver real |
+| `muralistas_sim` | MuJoCo: Stretch 3, pared, pizarrón con 6 ArUco, pincel con resorte y tinta. Expone las mismas interfaces que el driver real |
 | `muralistas_perception` | Nube 3D de la cabeza; pose del pizarrón (esquinas de ArUco en 3D + plano); segmentación del marcador por color (verde en sim, azul en el robot) y calibración de la punta; `generar_arucos` para imprimirlos |
 | `muralistas_planning` | Figura + casilla, tramo libre (con largo y velocidad) o fantasma (simplificar, redondear, remuestrear) → trazos en el pizarrón |
 | `muralistas_control` | Trazos → base + elevador + brazo; acercar, apoyar, pintar, levantar, desplazarse sin pintar; levantar solo tras 10 s quieto; paro; rutina de arranque. `prueba_articulaciones` para el robot real |
@@ -97,7 +97,7 @@ ros2 launch muralistas_bringup sim_mural.launch.py perfil:=datos/perfil_nino_01_
 
 ## Resultados en simulación (13-nov-2026, papel de 3 m con 14 ArUco)
 
-Se midieron antes del cambio al pizarrón de 1.5 × 1.0 m con 4 ArUco. Hay que repetirlos con el pizarrón nuevo (ver [PRUEBAS.md](PRUEBAS.md)).
+Se midieron antes del cambio al pizarrón de 2.40 × 1.18 m con 6 ArUco. Hay que repetirlos con el pizarrón nuevo (ver [PRUEBAS.md](PRUEBAS.md)).
 
 | Qué | Resultado |
 |---|---|

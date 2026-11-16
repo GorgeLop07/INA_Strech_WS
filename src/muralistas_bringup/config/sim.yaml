@@ -15,8 +15,8 @@ mural_sim:
       rate: 10.0
     scene:
       wall_y: -0.75              # superficie del papel; el robot empieza en y = 0 mirando a +x
-      board_origin_x: 0.75       # el pizarrón va de x = 0.75 a x = -0.75 (1.5 m), centrado en el robot
-      paper_bottom_z: 0.225      # así la zona de trabajo queda entre 0.50 y 0.95 m de alto
+      board_origin_x: -1.0       # -1 = el pizarrón centrado frente al robot (sale de mural.width)
+      paper_bottom_z: -1.0       # -1 = mural.bottom_height
       robot_x: 0.0
       robot_y: 0.0
       robot_yaw: 0.0

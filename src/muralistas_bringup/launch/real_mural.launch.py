@@ -40,7 +40,7 @@ def _nodes(context):
             Node(package='muralistas_planning', executable='planner', name='planner', output='screen',
                  parameters=[MURAL, overrides('planner', {'board_frame': arg('board_frame')})]),
             Node(package='muralistas_control', executable='control', name='control', output='screen',
-                 parameters=[os.path.join(CFG, 'control.yaml'), os.path.join(CFG, 'control_real.yaml'),
+                 parameters=[MURAL, os.path.join(CFG, 'control.yaml'), os.path.join(CFG, 'control_real.yaml'),
                              overrides('control', {'board_frame': arg('board_frame'),
                                                    'auto_startup': is_true('auto_startup')})]),
         ]

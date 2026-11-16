@@ -40,6 +40,8 @@ from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformListener
 from trajectory_msgs.msg import JointTrajectoryPoint, MultiDOFJointTrajectoryPoint
 
+from muralistas_common.head_scan import head_scan_for
+from muralistas_common.layout import MuralLayout
 from muralistas_interfaces.action import DrawStroke
 from muralistas_interfaces.msg import Board
 from muralistas_interfaces.srv import CalibrateTool, SetBrushColor
@@ -91,12 +93,24 @@ class ControlNode(Node):
         self.ready_pose = dict(zip(
             ['joint_lift', 'wrist_extension', 'joint_wrist_yaw', 'joint_wrist_pitch', 'joint_wrist_roll'],
             p('ready_pose', [0.6, 0.05, 0.0, 0.0, 0.0]).value))
-        scan = p('head_scan', [-1.35, -0.45, -1.35, -0.75, -1.57, -0.45, -1.57, -0.75, -1.8, -0.45, -1.8, -0.75]).value
-        self.head_scan = list(zip(scan[0::2], scan[1::2]))
+        self.layout = MuralLayout.from_dict({k: p(f'mural.{k}', v).value for k, v in MuralLayout().__dict__.items()})
+        if p('head_scan_auto', True).value:
+            # Calculado con el pizarrón de config/mural.yaml: ver head_scan.py
+            self.head_scan = head_scan_for(
+                self.layout, wall_distance=p('scan.wall_distance', 0.75).value,
+                camera_height=p('scan.camera_height', 1.30).value,
+                half_fov=tuple(p('scan.half_fov', [21.0, 34.0]).value), margin=p('scan.margin_deg', 8.0).value)
+        else:
+            scan = p('head_scan', [-1.0, -0.45, -1.57, -0.45, -2.15, -0.45]).value
+            self.head_scan = list(zip(scan[0::2], scan[1::2]))
+        # Elevador abajo y brazo recogido durante el barrido: a la altura de trabajo tapan los ArUco de abajo
+        self.scan_pose = tuple(p('scan_pose', [0.2, 0.0]).value)
         self.head_work = tuple(p('head_work_pose', [-1.5708, -0.6]).value)
         self.auto_startup = p('auto_startup', True).value
         self.head_scan_dwell = p('head_scan_dwell', 1.0).value          # s quieta en cada pose del barrido
-        self.board_markers_expected = p('board_markers_expected', 4).value
+        # 0 = todos los del pizarrón (config/mural.yaml)
+        self.board_markers_expected = (p('board_markers_expected', 0).value
+                                       or len(self.layout.marker_positions()))
         self.calibrate_on_startup = p('calibrate_on_startup', True).value
 
         self.cb = ReentrantCallbackGroup()
@@ -476,6 +490,9 @@ class ControlNode(Node):
             self.get_logger().warn('La percepción no ha procesado imágenes: barro la cabeza de todos modos')
         self._status('buscando el mural')
         expected = self.board_markers_expected
+        poses = ', '.join(f'({a:.2f}, {b:.2f})' for a, b in self.head_scan)
+        self.get_logger().info(f'Barrido de cabeza (pan, tilt): {poses}')
+        self._run_trajectory([self.lift_joint, self.ext_joint], [(2.0, self.scan_pose)])
         for attempt in range(2):
             for pan, tilt in self.head_scan:
                 self._run_trajectory(['joint_head_pan', 'joint_head_tilt'], [(1.2, (pan, tilt))])
@@ -484,7 +501,9 @@ class ControlNode(Node):
                 break
             if attempt == 0:
                 self.get_logger().info(f'El barrido vio {self._board_markers} de {expected} marcadores: lo repito')
-        self._run_trajectory(['joint_head_pan', 'joint_head_tilt'], [(1.2, self.head_work)])
+        self._run_trajectory([self.lift_joint, self.ext_joint, 'joint_head_pan', 'joint_head_tilt'],
+                             [(2.0, (self.ready_pose['joint_lift'], self.ready_pose['wrist_extension'])
+                               + tuple(self.head_work))])
         try:
             self._lookup(self.base_frame, self.board_frame)
             found = True

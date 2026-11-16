@@ -26,8 +26,16 @@ control:
       base_max: 1.6
     ready_pose: [0.6, 0.05, 0.0, 0.0, 0.0]   # elevador, brazo, muñeca yaw/pitch/roll
     head_work_pose: [-1.5708, -0.6]          # cabeza mirando al pincel y al mural
-    # Barrido de cabeza al arrancar para ubicar el pizarrón (pares pan, tilt). Con el pizarrón de 1.5 m
-    # a ~0.75 m, las esquinas quedan a ±42° del frente: se mira a la izquierda, al centro y a la derecha.
-    head_scan: [-1.0, -0.45, -1.0, -0.75, -1.57, -0.45, -2.15, -0.45, -2.15, -0.75]
+    # Barrido de cabeza al arrancar para ubicar el pizarrón. Se calcula solo con config/mural.yaml
+    # (muralistas_common/head_scan.py) y sale en el log ("Barrido de cabeza (pan, tilt): ...").
+    head_scan_auto: true
+    scan:
+      wall_distance: 0.75   # del centro de la base a la pared (m): donde se coloca el robot
+      camera_height: 1.30   # altura de la cámara de la cabeza (m)
+      half_fov: [21.0, 34.0]   # medio campo de visión de la cámara girada: a los lados, arriba-abajo (°)
+      margin_deg: 8.0       # los marcadores quedan al menos a esto del borde de la imagen
+    scan_pose: [0.2, 0.0]   # elevador y brazo durante el barrido: abajo y recogido, para no tapar los ArUco
+    # Con head_scan_auto: false se usa esta lista a mano (pares pan, tilt)
+    head_scan: [-1.0, -0.45, -1.0, -0.75, -1.57, -0.45, -1.57, -0.75, -2.15, -0.45, -2.15, -0.75]
     auto_startup: true
     calibrate_on_startup: true

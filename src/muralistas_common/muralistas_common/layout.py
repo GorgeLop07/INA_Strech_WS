@@ -6,8 +6,13 @@ Marco "board" (el pizarrón visto de frente):
   - y hacia arriba (v),
   - z saliendo de la pared, hacia el robot.
 
-Los ArUco van en las 4 esquinas (IDs 0 a 3, en sentido antihorario desde abajo a la izquierda),
-o en franjas abajo y arriba (el papel largo de la primera simulación). Se dibuja solo dentro de
+Los ArUco van en las 4 esquinas más el centro de abajo y de arriba (6, IDs 0 a 5 en sentido
+antihorario desde abajo a la izquierda), solo en las 4 esquinas (IDs 0 a 3), o en franjas abajo y
+arriba (el papel largo de la primera simulación). Los del centro quedan a la vista mientras el robot
+dibuja en medio del pizarrón y corrigen la deriva de la odometría al mover la base.
+
+La zona de trabajo se coloca por su altura sobre el piso (work_center_z), no por la del pizarrón:
+con bottom_height (altura del borde de abajo) se calcula sola su posición en el pizarrón. Se dibuja solo dentro de
 la zona de trabajo, más chica que el pizarrón, para que el robot se mueva menos y las casillas
 del barrido queden juntas. La cuadrícula de casillas cubre la zona de trabajo.
 """
@@ -17,21 +22,23 @@ from dataclasses import dataclass
 
 @dataclass
 class MuralLayout:
-    width: float = 1.5            # ancho del pizarrón (m)
-    height: float = 1.0           # alto del pizarrón (m)
-    margin: float = 0.14          # franja del borde para los marcadores (m)
-    marker_size: float = 0.10     # lado del cuadro negro del ArUco (m)
-    markers: str = 'esquinas'     # esquinas (IDs 0..3) | franjas (abajo y arriba, cada marker_spacing)
+    width: float = 2.40           # ancho del pizarrón (m)
+    height: float = 1.18          # alto del pizarrón (m)
+    bottom_height: float = 0.20   # altura del borde de abajo sobre el piso (m)
+    margin: float = 0.20          # franja del borde para los marcadores (m)
+    marker_size: float = 0.15     # lado del cuadro negro del ArUco (m)
+    markers: str = 'seis'         # seis (esquinas + centros, IDs 0..5) | esquinas (0..3) | franjas
     marker_spacing: float = 0.5   # solo franjas: distancia entre marcadores (m)
     top_id_offset: int = 10       # solo franjas: los marcadores de arriba empiezan en este ID
-    work_width: float = 0.60      # zona de trabajo (m)
-    work_height: float = 0.45
-    work_center_u: float = -1.0   # centro de la zona en el pizarrón; -1 = centrada
-    work_center_v: float = -1.0
+    work_width: float = 0.80      # zona de trabajo (m)
+    work_height: float = 0.60
+    work_center_z: float = 0.75   # altura del centro de la zona sobre el piso (m)
+    work_center_u: float = -1.0   # centro de la zona en el pizarrón; -1 = centrada a lo ancho
+    work_center_v: float = -1.0   # -1 = sale de work_center_z y bottom_height
     rows: int = 3                 # cuadrícula de casillas dentro de la zona de trabajo
     cols: int = 4
     shape_fill: float = 0.8       # qué fracción de la casilla ocupa una figura
-    template_size: float = 0.30   # lado de las plantillas de rehabilitación (m)
+    template_size: float = 0.40   # lado de las plantillas de rehabilitación (m)
 
     @classmethod
     def from_dict(cls, d):
@@ -42,6 +49,10 @@ class MuralLayout:
     def marker_positions(self):
         """Centro de cada marcador en coordenadas del pizarrón: {id: (u, v)}."""
         half = self.margin / 2.0
+        w, h = self.width, self.height
+        if self.markers == 'seis':
+            return {0: (half, half), 1: (w / 2, half), 2: (w - half, half),
+                    3: (w - half, h - half), 4: (w / 2, h - half), 5: (half, h - half)}
         if self.markers == 'esquinas':
             return {0: (half, half), 1: (self.width - half, half),
                     2: (self.width - half, self.height - half), 3: (half, self.height - half)}
@@ -57,11 +68,20 @@ class MuralLayout:
             positions[self.top_id_offset + i] = (u, self.height - half)
         return positions
 
+    def marker_names(self):
+        """Dónde va cada marcador, para imprimirlo en la hoja: {id: 'abajo-izquierda', ...}."""
+        names = {}
+        for marker_id, (u, v) in self.marker_positions().items():
+            row = 'abajo' if v < self.height / 2 else 'arriba'
+            col = ('izquierda' if u < self.width / 3 else 'derecha' if u > 2 * self.width / 3 else 'centro')
+            names[marker_id] = f'{row}-{col}'
+        return names
+
     # --- Zona de trabajo y cuadrícula ------------------------------------
     def work_rect(self):
         """(u_min, v_min, u_max, v_max) de la zona de trabajo, siempre dentro del margen."""
         cu = self.width / 2.0 if self.work_center_u < 0 else self.work_center_u
-        cv = self.height / 2.0 if self.work_center_v < 0 else self.work_center_v
+        cv = self.work_center_z - self.bottom_height if self.work_center_v < 0 else self.work_center_v
         w = min(self.work_width, self.width - 2 * self.margin)
         h = min(self.work_height, self.height - 2 * self.margin)
         u0 = min(max(cu - w / 2.0, self.margin), self.width - self.margin - w)

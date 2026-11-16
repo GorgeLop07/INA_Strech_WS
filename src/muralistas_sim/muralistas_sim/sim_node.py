@@ -72,8 +72,8 @@ class MuralSimNode(Node):
         self.cfg = SceneConfig(
             layout=self.layout,
             wall_y=p('scene.wall_y', -0.75).value,
-            board_origin_x=p('scene.board_origin_x', 1.5).value,
-            paper_bottom_z=p('scene.paper_bottom_z', 0.18).value,
+            board_origin_x=p('scene.board_origin_x', -1.0).value,
+            paper_bottom_z=p('scene.paper_bottom_z', -1.0).value,
             robot_x=p('scene.robot_x', 0.0).value,
             robot_y=p('scene.robot_y', 0.0).value,
             robot_yaw=p('scene.robot_yaw', 0.0).value,

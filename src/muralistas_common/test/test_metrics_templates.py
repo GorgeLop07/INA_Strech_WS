@@ -2,6 +2,7 @@ import math
 
 import numpy as np
 
+from muralistas_common.head_scan import head_scan_for
 from muralistas_common.layout import MuralLayout
 from muralistas_common.metrics import Progression, ldlj, msj, sparc, stop_stars, trace_metrics, trace_stars
 from muralistas_common.templates import (STAGES, TEMPLATES, direction_name, nearest_on_polyline, resample,
@@ -31,14 +32,21 @@ def test_movimiento_con_submovimientos_es_menos_suave():
     assert sparc(jerky, FS) < sparc(smooth, FS)
 
 
-def test_layout_esquinas_y_zona_de_trabajo():
+def test_layout_seis_marcadores_y_zona_de_trabajo():
     L = MuralLayout()
-    assert set(L.marker_positions()) == {0, 1, 2, 3}
-    u0, v0, u1, v1 = L.work_rect()
-    assert math.isclose(u1 - u0, 0.60) and math.isclose(v1 - v0, 0.45)
-    assert math.isclose((u0 + u1) / 2, 0.75) and math.isclose((v0 + v1) / 2, 0.5)
+    pos = L.marker_positions()
+    assert set(pos) == {0, 1, 2, 3, 4, 5}
+    assert math.isclose(pos[1][0], 1.20) and math.isclose(pos[4][0], 1.20)      # los del centro
+    assert L.marker_names()[1] == 'abajo-centro' and L.marker_names()[5] == 'arriba-izquierda'
+    assert set(MuralLayout(markers='esquinas').marker_positions()) == {0, 1, 2, 3}
+    u0, v0, u1, v1 = L.work_rect()                                       # pizarrón de 240 x 118
+    assert math.isclose(u1 - u0, 0.80) and math.isclose(v1 - v0, 0.60)
+    assert math.isclose((u0 + u1) / 2, 1.20)
+    assert math.isclose(L.bottom_height + v0, 0.45) and math.isclose(L.bottom_height + v1, 1.05)   # del piso
     a, b, c, d = L.cell_rect(0, 0)
-    assert math.isclose(c - a, 0.15) and math.isclose(d - b, 0.15)       # casillas de 15 cm
+    assert math.isclose(c - a, 0.20) and math.isclose(d - b, 0.20)       # casillas de 20 cm
+    # La zona nunca se sale del margen, aunque el pizarrón esté muy alto
+    assert MuralLayout(bottom_height=0.9).work_rect()[1] == MuralLayout().margin
     assert L.work_to_board(*L.board_to_work(0.9, 0.4)) == (0.9, 0.4)
     assert len(MuralLayout(markers='franjas', width=3.0).marker_positions()) == 14   # la simulación vieja
 
@@ -57,7 +65,7 @@ def test_plantilla_centrada_en_la_zona():
     L = MuralLayout()
     pts = template_in_zone('cuadrado', L)
     us, vs = [p[0] for p in pts], [p[1] for p in pts]
-    assert math.isclose(max(us) - min(us), 0.30) and math.isclose((max(us) + min(us)) / 2, 0.75)
+    assert math.isclose(max(us) - min(us), L.template_size) and math.isclose((max(us) + min(us)) / 2, L.width / 2)
 
 
 def test_resample_y_punto_mas_cercano():
@@ -91,3 +99,26 @@ def test_progresion_5_de_8():
     for _ in range(3):
         change = p.update(0, coverage=0.3)
     assert change == 'sube_asistencia' and p.level == 'alta'
+
+
+def _seen(layout, poses, half_fov=(21.0, 34.0), wall=0.75, cam=1.30):
+    """IDs que caen dentro de la imagen en alguna pose."""
+    seen = set()
+    for marker_id, (u, v) in layout.marker_positions().items():
+        left = layout.width / 2 - u
+        pan = -math.pi / 2 + math.atan2(left, wall)
+        tilt = -math.atan2(cam - layout.bottom_height - v, math.hypot(left, wall))
+        for p, q in poses:
+            if abs(pan - p) < math.radians(half_fov[0]) and abs(tilt - q) < math.radians(half_fov[1]):
+                seen.add(marker_id)
+    return seen
+
+
+def test_head_scan_ve_todos_los_marcadores():
+    for layout in (MuralLayout(),                                                       # 240 x 118
+                   MuralLayout(width=1.5, height=1.0, margin=0.14, marker_size=0.10),   # el de antes
+                   MuralLayout(width=2.0, height=1.5, bottom_height=0.10)):
+        poses = head_scan_for(layout)
+        assert _seen(layout, poses) == set(layout.marker_positions())
+        assert all(-math.pi < p < 0 and -1.5 < q < 0.7 for p, q in poses)              # límites de la cabeza
+        assert [p for p, _ in poses] == sorted((p for p, _ in poses), reverse=True)     # izquierda a derecha

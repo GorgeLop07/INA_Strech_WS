@@ -35,8 +35,8 @@ PAPER_HALF_THICKNESS = 0.001
 class SceneConfig:
     layout: MuralLayout = field(default_factory=MuralLayout)
     wall_y: float = -0.75             # superficie del papel (y del mundo); el robot está en y = 0
-    board_origin_x: float = 1.5       # x del mundo donde empieza el papel (u = 0)
-    paper_bottom_z: float = 0.18      # altura del borde inferior del papel
+    board_origin_x: float = -1.0      # x del mundo donde empieza el papel (u = 0); < 0 = centrado en el robot
+    paper_bottom_z: float = -1.0      # altura del borde inferior del papel; < 0 = mural.bottom_height
     robot_x: float = 0.0
     robot_y: float = 0.0
     robot_yaw: float = 0.0
@@ -47,6 +47,12 @@ class SceneConfig:
     camera_fovy: float = 42.0               # cámara de la cabeza (D435if), como en stretch_mujoco
     stretch_models: str = ''
     cache_dir: str = ''
+
+    def __post_init__(self):
+        if self.board_origin_x < 0:
+            self.board_origin_x = self.robot_x + self.layout.width / 2.0
+        if self.paper_bottom_z < 0:
+            self.paper_bottom_z = self.layout.bottom_height
 
     def board_transform(self):
         """T_world_board (4x4)."""
