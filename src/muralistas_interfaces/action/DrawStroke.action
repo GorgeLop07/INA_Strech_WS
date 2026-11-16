@@ -1,8 +1,9 @@
-# Pintar un trazo. Los puntos van en el marco del mural (x, y en metros; z se ignora).
+# Pintar un trazo. Los puntos van en el marco del pizarrón (x, y en metros; z se ignora).
 string color
 geometry_msgs/Point[] points
 bool relative_to_current   # los puntos son desplazamientos desde la punta actual (trazo libre)
 bool lift_at_end           # levantar el pincel al terminar (o al cancelar)
+bool travel_only           # solo desplazarse con el pincel levantado hasta el último punto
 float32 speed              # m/s de la punta sobre el papel (0 = valor por defecto)
 ---
 bool success

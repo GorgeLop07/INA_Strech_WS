@@ -44,3 +44,21 @@ def test_trazo_libre_en_el_borde_se_rechaza():
 def test_figura_desconocida():
     with pytest.raises(PlanError):
         plan_shape(MuralLayout(), 'dragon', 0, 0)
+
+
+def test_fantasma_se_simplifica_redondea_y_queda_en_la_zona():
+    from muralistas_planning.stroke_planner import process_ghost
+    L = MuralLayout()
+    u0, v0, u1, v1 = L.drawable_rect()
+    raw = [(u0 + 0.1 + 0.001 * i, v0 + 0.1 + 0.0005 * (i % 3)) for i in range(200)] + [(u1 + 0.2, v0 + 0.1)]
+    pts = process_ghost(L, raw)
+    assert all(u0 - 1e-9 <= u <= u1 + 1e-9 and v0 - 1e-9 <= v <= v1 + 1e-9 for u, v in pts)
+    assert all(math.dist(a, b) <= 0.0101 for a, b in zip(pts[:-1], pts[1:]))
+    assert math.dist(pts[0], raw[0]) < 1e-9
+    assert process_ghost(L, [(0.75, 0.5)]) == [(0.75, 0.5)]          # un solo punto: apoyar ahí
+
+
+def test_tramo_libre_con_largo():
+    L = MuralLayout()
+    du, dv = plan_free_segment(L, (0.75, 0.5), 0.0, max_length=0.1)
+    assert math.isclose(du, 0.1)

@@ -11,6 +11,11 @@ control:
       lift: joint_lift
       extension: wrist_extension
     color_service: ""           # sin cambio de color automático en el robot real
+    # El plumón real no tiene el resorte del pincel simulado: se apoya poco para el primer contacto
+    # y se sube si no pinta (ver PRUEBAS.md).
+    press_depth: 0.003          # m que se empuja contra el pizarrón
+    hover_distance: 0.03        # m de separación con el marcador levantado
+    pen_idle_lift: 10.0         # s apoyado sin moverse antes de levantarlo solo
     # Por confirmar con el marcador puesto:
     #   grasp_frame: link_grasp_center   (la prueba --solo-leer dice si existe)
     #   tool_offset: [0.0, -0.089, 0.0]  (se mide en la prueba de la pose del marcador)

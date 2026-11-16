@@ -1,13 +1,15 @@
-"""Geometría del mural en su propio marco de referencia.
+"""Geometría del pizarrón en su propio marco de referencia.
 
-Marco "board" (el papel visto de frente):
-  - origen en la esquina inferior izquierda del papel,
+Marco "board" (el pizarrón visto de frente):
+  - origen en la esquina inferior izquierda del pizarrón,
   - x hacia la derecha a lo largo de la pared (u),
   - y hacia arriba (v),
   - z saliendo de la pared, hacia el robot.
 
-El papel tiene un margen donde van los marcadores ArUco (abajo y arriba).
-El área de dibujo es lo que queda dentro del margen, dividida en una cuadrícula.
+Los ArUco van en las 4 esquinas (IDs 0 a 3, en sentido antihorario desde abajo a la izquierda),
+o en franjas abajo y arriba (el papel largo de la primera simulación). Se dibuja solo dentro de
+la zona de trabajo, más chica que el pizarrón, para que el robot se mueva menos y las casillas
+del barrido queden juntas. La cuadrícula de casillas cubre la zona de trabajo.
 """
 
 from dataclasses import dataclass
@@ -15,15 +17,21 @@ from dataclasses import dataclass
 
 @dataclass
 class MuralLayout:
-    width: float = 3.0            # largo del papel (m)
-    height: float = 1.0           # alto del papel (m)
-    margin: float = 0.12          # franja del borde para los marcadores (m)
-    marker_size: float = 0.08     # lado del cuadro negro del ArUco (m)
-    marker_spacing: float = 0.5   # distancia entre marcadores a lo largo del papel (m)
-    top_id_offset: int = 10       # los marcadores de arriba empiezan en este ID
-    rows: int = 3
+    width: float = 1.5            # ancho del pizarrón (m)
+    height: float = 1.0           # alto del pizarrón (m)
+    margin: float = 0.14          # franja del borde para los marcadores (m)
+    marker_size: float = 0.10     # lado del cuadro negro del ArUco (m)
+    markers: str = 'esquinas'     # esquinas (IDs 0..3) | franjas (abajo y arriba, cada marker_spacing)
+    marker_spacing: float = 0.5   # solo franjas: distancia entre marcadores (m)
+    top_id_offset: int = 10       # solo franjas: los marcadores de arriba empiezan en este ID
+    work_width: float = 0.60      # zona de trabajo (m)
+    work_height: float = 0.45
+    work_center_u: float = -1.0   # centro de la zona en el pizarrón; -1 = centrada
+    work_center_v: float = -1.0
+    rows: int = 3                 # cuadrícula de casillas dentro de la zona de trabajo
     cols: int = 4
     shape_fill: float = 0.8       # qué fracción de la casilla ocupa una figura
+    template_size: float = 0.30   # lado de las plantillas de rehabilitación (m)
 
     @classmethod
     def from_dict(cls, d):
@@ -32,8 +40,11 @@ class MuralLayout:
 
     # --- Marcadores -------------------------------------------------------
     def marker_positions(self):
-        """Centro de cada marcador en coordenadas del mural: {id: (u, v)}."""
+        """Centro de cada marcador en coordenadas del pizarrón: {id: (u, v)}."""
         half = self.margin / 2.0
+        if self.markers == 'esquinas':
+            return {0: (half, half), 1: (self.width - half, half),
+                    2: (self.width - half, self.height - half), 3: (half, self.height - half)}
         us = [half]
         u = self.marker_spacing
         while u < self.width - half - 1e-6:
@@ -46,10 +57,29 @@ class MuralLayout:
             positions[self.top_id_offset + i] = (u, self.height - half)
         return positions
 
-    # --- Área de dibujo y cuadrícula -------------------------------------
+    # --- Zona de trabajo y cuadrícula ------------------------------------
+    def work_rect(self):
+        """(u_min, v_min, u_max, v_max) de la zona de trabajo, siempre dentro del margen."""
+        cu = self.width / 2.0 if self.work_center_u < 0 else self.work_center_u
+        cv = self.height / 2.0 if self.work_center_v < 0 else self.work_center_v
+        w = min(self.work_width, self.width - 2 * self.margin)
+        h = min(self.work_height, self.height - 2 * self.margin)
+        u0 = min(max(cu - w / 2.0, self.margin), self.width - self.margin - w)
+        v0 = min(max(cv - h / 2.0, self.margin), self.height - self.margin - h)
+        return (u0, v0, u0 + w, v0 + h)
+
     def drawable_rect(self):
-        """(u_min, v_min, u_max, v_max) del área donde se puede pintar."""
-        return (self.margin, self.margin, self.width - self.margin, self.height - self.margin)
+        """Donde se puede pintar: la zona de trabajo."""
+        return self.work_rect()
+
+    def work_to_board(self, x, y):
+        """Del marco de la zona de trabajo (origen abajo a la izquierda) al del pizarrón."""
+        u0, v0, _, _ = self.work_rect()
+        return (u0 + x, v0 + y)
+
+    def board_to_work(self, u, v):
+        u0, v0, _, _ = self.work_rect()
+        return (u - u0, v - v0)
 
     def cell_rect(self, row, col):
         """Rectángulo de una casilla. La fila 0 es la de arriba, como se ve en pantalla."""

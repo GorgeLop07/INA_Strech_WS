@@ -1,0 +1,25 @@
+# Nintendo Switch Pro Controller (USB) con ros-humble-joy (SDL).
+# Mapeo medido con la prueba guiada el 15-nov-2026 en la laptop (kernel 6.8, hid-nintendo):
+# /joy trae 6 ejes y 14 botones. SDL invierte A y B respecto a lo impreso en el control.
+joy_node:
+  ros__parameters:
+    deadzone: 0.0            # sin zona muerta aquí: la pone entrada_joystick, por niño
+    autorepeat_rate: 100.0   # /joy a 100 Hz aunque el joystick esté quieto (registro uniforme)
+
+entrada_joystick:
+  ros__parameters:
+    mando:
+      ejes:
+        x: 0                 # joystick izquierdo; a la derecha da negativo
+        x_invertido: true
+        y: 1                 # joystick izquierdo; arriba da positivo
+        y_invertido: false
+      botones:
+        confirmar: 1         # A
+        cancelar: 0          # B
+        switch: 8            # ZR (solo para el registro; el switch lo filtra switch_filter)
+        paro: 10             # + : paro de respaldo; el paro principal es el del robot
+
+switch_filter:
+  ros__parameters:
+    joy_buttons: [8]         # ZR hace de switch en los modos S, J2 y J3

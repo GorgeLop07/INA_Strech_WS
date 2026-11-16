@@ -55,8 +55,13 @@ class PerceptionNode(Node):
         self.cloud_rate = p('cloud_rate', 2.0).value
         self.max_rate = p('max_rate', 5.0).value
         self.rotate_debug = p('rotate_debug_image', True).value   # la cámara de la cabeza va girada 90°
-        self.brush = BrushSegmenter(tip_beyond_body=p('brush.tip_beyond_body', 0.017).value,
-                                    body_radius=p('brush.body_radius', 0.011).value)
+        # Color del cuerpo del pincel en HSV de OpenCV (H 0-179). Simulación: verde. Robot real: el
+        # azul del plumón (config/perception_real.yaml).
+        self.brush = BrushSegmenter(hsv_low=tuple(p('brush.hsv_low', [45, 120, 80]).value),
+                                    hsv_high=tuple(p('brush.hsv_high', [80, 255, 255]).value),
+                                    tip_beyond_body=p('brush.tip_beyond_body', 0.017).value,
+                                    body_radius=p('brush.body_radius', 0.011).value,
+                                    max_distance_from_gripper=p('brush.max_distance_from_gripper', 0.30).value)
         self.board = BoardEstimator(self.layout, history=p('board.history', 30).value)
         self.aruco = ArucoDetector()
 
@@ -90,6 +95,9 @@ class PerceptionNode(Node):
         self._calib_lock = threading.Lock()
         self._calib_samples = None
         self._T_odom_board = None
+        self._board_lock = threading.Lock()
+        self._last_plane = 0.0
+        self.plane_period = p('board.plane_check_period', 2.0).value   # s entre verificaciones del plano
         self.create_timer(0.1, self._republish_board_tf)
         self.get_logger().info('Percepción lista: esperando imágenes de la cabeza')
 
@@ -120,12 +128,15 @@ class PerceptionNode(Node):
         # 1) Mural: ArUco + profundidad, acumulado en odom
         detections = self.aruco.detect(gray)
         if detections:
-            self.board.add_frame(detections, depth, K, T_odom_cam)
-            T = self.board.fit()
-            if T is not None:
-                self._T_odom_board = T
-                self.board.check_plane(depth, K, T_odom_cam)
-                self._publish_board(stamp)
+            with self._board_lock:      # /perception/reset_board corre en otro hilo
+                self.board.add_frame(detections, depth, K, T_odom_cam)
+                T = self.board.fit()
+                if T is not None:
+                    self._T_odom_board = T
+                    if now - self._last_plane > self.plane_period:   # verificación, no hace falta cada cuadro
+                        self._last_plane = now
+                        self.board.check_plane(depth, K, T_odom_cam)
+                    self._publish_board(stamp)
 
         # 2) Nube 3D a color (lo que ve la cabeza)
         if now - self._last_cloud > 1.0 / self.cloud_rate:
@@ -261,8 +272,9 @@ class PerceptionNode(Node):
         return response
 
     def _on_reset(self, request, response):
-        self.board.reset()
-        self._T_odom_board = None
+        with self._board_lock:
+            self.board.reset()
+            self._T_odom_board = None
         response.success, response.message = True, 'Pose del mural reiniciada'
         return response
 

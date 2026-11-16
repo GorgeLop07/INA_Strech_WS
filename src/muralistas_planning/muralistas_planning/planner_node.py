@@ -6,6 +6,8 @@ Salidas:   acción /control/draw_stroke (DrawStroke), /planning/busy, /planning/
 Una figura puede tener varios trazos (el sol, los puntos): se mandan uno tras otro,
 levantando el pincel entre ellos. El trazo libre se manda como un tramo largo hasta el
 borde y se cancela cuando el niño vuelve a presionar (o suelta, en modo "mantener").
+El fantasma confirmado (joystick) se simplifica, se redondea y se remuestrea antes de
+mandarlo: si estaba "levantado", el robot solo se desplaza; si "pegado", pinta.
 """
 
 import signal
@@ -27,7 +29,7 @@ from muralistas_common.layout import MuralLayout
 from muralistas_interfaces.action import DrawStroke
 from muralistas_interfaces.msg import StrokeRequest
 
-from .stroke_planner import PlanError, plan_free_segment, plan_shape, validate_color
+from .stroke_planner import PlanError, plan_free_segment, plan_shape, process_ghost, validate_color
 
 
 class PlannerNode(Node):
@@ -65,28 +67,37 @@ class PlannerNode(Node):
 
     def _on_request(self, req):
         try:
+            color = validate_color(req.color)
             if req.action == StrokeRequest.SHAPE:
-                validate_color(req.color)
                 strokes = plan_shape(self.layout, req.shape, req.row, req.col)
-                self._preview(strokes, req.color)
-                goals = [self._goal(req.color, s, lift=True, speed=self.draw_speed) for s in strokes]
+                self._preview(strokes, color)
+                goals = [self._goal(color, s, lift=True, speed=self.draw_speed) for s in strokes]
                 self._enqueue(goals, replace=False)
-                self.get_logger().info(f'Figura {req.shape} {req.color} en ({req.row}, {req.col}): {len(goals)} trazos')
+                self.get_logger().info(f'Figura {req.shape} en ({req.row}, {req.col}): {len(goals)} trazos')
             elif req.action == StrokeRequest.MOVE_TO_CELL:
-                validate_color(req.color)
                 u, v = self.layout.cell_center(req.row, req.col)
-                self._enqueue([self._goal(req.color, [(u, v)], lift=False, speed=self.draw_speed)], replace=True)
+                self._enqueue([self._goal(color, [(u, v)], lift=False, speed=self.draw_speed)], replace=True)
             elif req.action == StrokeRequest.FREE_START:
                 if self.tip_uv is None:
                     raise PlanError('Todavía no sé dónde está la punta del pincel')
-                du, dv = plan_free_segment(self.layout, self.tip_uv, req.direction_deg, self.free_max_length)
-                goal = self._goal(req.color, [(du, dv)], lift=False, speed=self.free_speed)
+                length = req.length if req.length > 0 else self.free_max_length
+                du, dv = plan_free_segment(self.layout, self.tip_uv, req.direction_deg, length)
+                goal = self._goal(color, [(du, dv)], lift=False, speed=req.speed or self.free_speed)
                 goal.relative_to_current = True
                 self._enqueue([goal], replace=True)
             elif req.action == StrokeRequest.FREE_STOP:
                 self._cancel_all()
             elif req.action == StrokeRequest.PEN_UP:
-                self._enqueue([self._goal(req.color or 'azul', [], lift=True, speed=self.draw_speed)], replace=True)
+                self._enqueue([self._goal(color, [], lift=True, speed=self.draw_speed)], replace=True)
+            elif req.action == StrokeRequest.GHOST:
+                pts = process_ghost(self.layout, [(p.x, p.y) for p in req.points])
+                goal = self._goal(color, pts, lift=req.lift_at_end, speed=req.speed or self.draw_speed)
+                goal.travel_only = not req.pen_down
+                if req.pen_down:
+                    self._preview([pts], color)
+                self._enqueue([goal], replace=False)
+                kind = 'pintar' if req.pen_down else 'desplazarse'
+                self.get_logger().info(f'Fantasma ({kind}): {len(req.points)} puntos -> {len(pts)}')
             else:
                 raise PlanError(f'Acción desconocida: {req.action}')
         except (PlanError, ValueError, KeyError) as exc:

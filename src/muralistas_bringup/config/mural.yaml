@@ -1,14 +1,18 @@
-# Geometría del mural: la comparten la simulación, la percepción, la planeación y la pantalla.
-# Si cambia el papel real o la posición de los ArUco, se cambia solo aquí.
+# Geometría del pizarrón: la comparten la simulación, la percepción, la planeación y las pantallas.
+# Si cambia el pizarrón real o la posición de los ArUco, se cambia solo aquí.
 /**:
   ros__parameters:
     mural:
-      width: 3.0            # largo del papel (m)
-      height: 1.0           # alto del papel (m)
-      margin: 0.12          # franja del borde con los marcadores (m)
-      marker_size: 0.08     # lado del cuadro negro del ArUco (m), DICT_4X4_50
-      marker_spacing: 0.5   # un marcador cada 0.5 m, abajo (IDs 0..6) y arriba (IDs 10..16)
-      top_id_offset: 10
-      rows: 3               # cuadrícula de casillas para elegir el lugar
+      width: 1.5            # ancho del pizarrón (m)
+      height: 1.0           # alto del pizarrón (m)
+      margin: 0.14          # franja del borde con los marcadores (m)
+      markers: esquinas     # 4 ArUco en las esquinas: ID 0 abajo-izq, 1 abajo-der, 2 arriba-der, 3 arriba-izq
+      marker_size: 0.10     # lado del cuadro negro del ArUco (m), DICT_4X4_50
+      work_width: 0.60      # zona de trabajo: donde se dibuja en todos los modos (m)
+      work_height: 0.45
+      work_center_u: -1.0   # centro de la zona en el pizarrón (m); -1 = centrada
+      work_center_v: -1.0
+      rows: 3               # cuadrícula del barrido (modo S): 4 x 3 casillas de 15 cm
       cols: 4
       shape_fill: 0.8       # qué tanto de la casilla ocupa una figura
+      template_size: 0.30   # lado de las plantillas de rehabilitación (m)

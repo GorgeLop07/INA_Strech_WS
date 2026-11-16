@@ -15,14 +15,14 @@ mural_sim:
       rate: 10.0
     scene:
       wall_y: -0.75              # superficie del papel; el robot empieza en y = 0 mirando a +x
-      board_origin_x: 1.5        # el papel va de x = 1.5 a x = -1.5 (3 m)
-      paper_bottom_z: 0.18
+      board_origin_x: 0.75       # el pizarrón va de x = 0.75 a x = -0.75 (1.5 m), centrado en el robot
+      paper_bottom_z: 0.225      # así la zona de trabajo queda entre 0.50 y 0.95 m de alto
       robot_x: 0.0
       robot_y: 0.0
       robot_yaw: 0.0
       grip_error: [0.004, -0.006, 0.012]   # error de agarre del pincel (m): la calibración lo debe encontrar
       brush_spring_stiffness: 300.0
-      initial_color: azul
+      initial_color: azul        # el marcador es uno solo, azul
     initial:
       lift: 0.6
       extension: 0.05

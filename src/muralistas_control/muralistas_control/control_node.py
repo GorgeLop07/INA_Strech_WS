@@ -14,8 +14,11 @@ También:
   - /control/startup (Trigger): pose inicial, barrido de cabeza para ubicar el mural y
     calibración del pincel con la percepción.
   - /control/tip_board: punta del pincel en el marco del mural (10 Hz).
+  - pen_idle_lift: si el pincel se queda apoyado sin moverse ese tiempo, se levanta solo
+    (la punta del plumón se aplasta). El siguiente trazo lo vuelve a apoyar.
 """
 
+import math
 import signal
 import threading
 import time
@@ -31,13 +34,14 @@ from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
 from rclpy.time import Time
-from sensor_msgs.msg import JointState
+from sensor_msgs.msg import JointState, PointCloud2
 from std_msgs.msg import Bool, String
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformListener
 from trajectory_msgs.msg import JointTrajectoryPoint, MultiDOFJointTrajectoryPoint
 
 from muralistas_interfaces.action import DrawStroke
+from muralistas_interfaces.msg import Board
 from muralistas_interfaces.srv import CalibrateTool, SetBrushColor
 
 from .cartesian_mapper import CartesianMapper, Limits, densify, path_length
@@ -78,6 +82,8 @@ class ControlNode(Node):
         self.travel_speed = p('travel_speed', 0.10).value
         self.approach_speed = p('approach_speed', 0.03).value
         self.retract_on_stop = p('retract_on_stop', True).value
+        self.pen_idle_lift = p('pen_idle_lift', 10.0).value      # s; 0 = nunca
+        self.continue_radius = p('continue_radius', 0.015).value  # m: un trazo que empieza aquí sigue sin levantar
         self.color_service = p('color_service', '/sim/set_brush_color').value
         self.limits = Limits(lift_min=p('limits.lift_min', 0.05).value, lift_max=p('limits.lift_max', 1.08).value,
                              ext_min=p('limits.ext_min', 0.0).value, ext_max=p('limits.ext_max', 0.50).value,
@@ -89,6 +95,8 @@ class ControlNode(Node):
         self.head_scan = list(zip(scan[0::2], scan[1::2]))
         self.head_work = tuple(p('head_work_pose', [-1.5708, -0.6]).value)
         self.auto_startup = p('auto_startup', True).value
+        self.head_scan_dwell = p('head_scan_dwell', 1.0).value          # s quieta en cada pose del barrido
+        self.board_markers_expected = p('board_markers_expected', 4).value
         self.calibrate_on_startup = p('calibrate_on_startup', True).value
 
         self.cb = ReentrantCallbackGroup()
@@ -105,6 +113,11 @@ class ControlNode(Node):
         self.create_subscription(Vector3Stamped, '/perception/tool_offset', self._on_tool_offset, latched,
                                  callback_group=self.cb)
         self.create_subscription(Bool, '/muralistas/stop', self._on_stop, 10, callback_group=self.cb)
+        # Arranque: saber si la percepción ya procesa imágenes y cuántos marcadores lleva vistos
+        self._perception_frames = 0
+        self._board_markers = 0
+        self.create_subscription(PointCloud2, '/perception/points', self._on_cloud, 2, callback_group=self.cb)
+        self.create_subscription(Board, '/perception/board', self._on_board, latched, callback_group=self.cb)
         self.pub_tip = self.create_publisher(PointStamped, '/control/tip_board', 10)
         self.pub_pen = self.create_publisher(Bool, '/control/pen_down', latched)
         self.pub_status = self.create_publisher(String, '/control/status', latched)
@@ -114,6 +127,9 @@ class ControlNode(Node):
                                    callback_group=self.cb)
         self.create_service(Trigger, '/control/startup', self._on_startup, callback_group=self.cb)
         self.create_timer(0.1, self._publish_tip, callback_group=self.cb)
+        self._last_motion = time.monotonic()
+        if self.pen_idle_lift > 0:
+            self.create_timer(0.5, self._check_pen_idle, callback_group=self.cb)
 
         self.color = None
         self.pen_down = False
@@ -133,6 +149,12 @@ class ControlNode(Node):
             self.joints[n] = q
         if self.ext_joint not in msg.name and all(f'joint_arm_l{i}' in self.joints for i in range(4)):
             self.joints[self.ext_joint] = sum(self.joints[f'joint_arm_l{i}'] for i in range(4))
+
+    def _on_cloud(self, _):
+        self._perception_frames += 1
+
+    def _on_board(self, msg):
+        self._board_markers = msg.markers_used
 
     def _on_tool_offset(self, msg):
         if self.use_calibrated_tool:
@@ -267,7 +289,28 @@ class ControlNode(Node):
 
     def _execute(self, goal_handle):
         with self.busy:
-            return self._draw(goal_handle)
+            try:
+                return self._draw(goal_handle)
+            finally:
+                self._last_motion = time.monotonic()
+
+    def _check_pen_idle(self):
+        """Levanta el pincel si lleva pen_idle_lift segundos apoyado sin moverse."""
+        if not self.pen_down or self.stopped or time.monotonic() - self._last_motion < self.pen_idle_lift:
+            return
+        if not self.busy.acquire(blocking=False):
+            return
+        try:
+            self.get_logger().info(f'Pincel apoyado {self.pen_idle_lift:.0f} s sin moverse: lo levanto')
+            self._status('levantar')
+            self._cartesian_phase([tuple(self._current_uv())], self.hover, self.approach_speed)
+            self._set_pen(False)
+            self._idle_status()
+        except Exception as exc:
+            self.get_logger().warn(f'No pude levantar el pincel: {exc}')
+        finally:
+            self._last_motion = time.monotonic()
+            self.busy.release()
 
     def _draw(self, goal_handle):
         g = goal_handle.request
@@ -290,12 +333,26 @@ class ControlNode(Node):
             self._change_color(g.color)
 
         phases = []
-        if pts and self.pen_down and not g.relative_to_current:
+        if g.travel_only:
+            # Desplazarse con el pincel levantado hasta el último punto, sin pintar
+            if self.pen_down:
+                phases.append(('levantar', [tuple(tip_uv)], self.hover, self.approach_speed, False))
+            if pts:
+                phases.append(('desplazar', [pts[-1]], self.hover, self.travel_speed, None))
+            pts, draw_pts, pen = [], [], False
+        elif pts and self.pen_down and not g.relative_to_current \
+                and math.dist(pts[0], tuple(tip_uv)) > self.continue_radius:
             phases.append(('levantar', [tuple(tip_uv)], self.hover, self.approach_speed, False))
             pen = False
         else:
             pen = self.pen_down
-        if pts and not pen:
+        if g.travel_only:
+            pass
+        elif pts and g.relative_to_current and not pen:
+            # Trazo libre con el pincel levantado (p. ej. tras levantarse solo): apoyar donde está
+            phases.append(('apoyar', [tuple(tip_uv)], -self.press, self.approach_speed, True))
+            draw_pts = densify([tuple(tip_uv)] + pts, 0.01)[1:]
+        elif pts and not pen:
             phases.append(('acercar', [pts[0]], self.hover, self.travel_speed, None))
             phases.append(('apoyar', [pts[0]], -self.press, self.approach_speed, True))
             draw_pts = densify(pts, 0.01)[1:]
@@ -305,7 +362,7 @@ class ControlNode(Node):
             draw_pts = []
         if draw_pts:
             phases.append(('pintar', draw_pts, -self.press, speed, None))
-        if g.lift_at_end:
+        if g.lift_at_end and not g.travel_only:
             last = pts[-1] if pts else tuple(tip_uv)
             phases.append(('levantar', [last], self.hover, self.approach_speed, False))
 
@@ -411,17 +468,30 @@ class ControlNode(Node):
         self._status('pose inicial')
         names = list(self.ready_pose) + ['joint_head_pan', 'joint_head_tilt']
         self._run_trajectory(names, [(3.0, list(self.ready_pose.values()) + list(self.head_work))])
+        # Si la percepción todavía no procesa imágenes, el barrido se desperdicia: esperar su primera nube
+        deadline = time.monotonic() + 30.0
+        while self._perception_frames == 0 and time.monotonic() < deadline:
+            time.sleep(0.2)
+        if self._perception_frames == 0:
+            self.get_logger().warn('La percepción no ha procesado imágenes: barro la cabeza de todos modos')
         self._status('buscando el mural')
-        for pan, tilt in self.head_scan:
-            self._run_trajectory(['joint_head_pan', 'joint_head_tilt'], [(1.2, (pan, tilt))])
-            time.sleep(0.6)
+        expected = self.board_markers_expected
+        for attempt in range(2):
+            for pan, tilt in self.head_scan:
+                self._run_trajectory(['joint_head_pan', 'joint_head_tilt'], [(1.2, (pan, tilt))])
+                time.sleep(self.head_scan_dwell)
+            if self._board_markers >= expected:
+                break
+            if attempt == 0:
+                self.get_logger().info(f'El barrido vio {self._board_markers} de {expected} marcadores: lo repito')
         self._run_trajectory(['joint_head_pan', 'joint_head_tilt'], [(1.2, self.head_work)])
         try:
             self._lookup(self.base_frame, self.board_frame)
             found = True
         except Exception:
             found = False
-        msg = 'Mural ubicado' if found else 'No encontré el mural (revisa que se vean los ArUco)'
+        msg = (f'Mural ubicado ({self._board_markers} de {expected} marcadores)' if found
+               else 'No encontré el mural (revisa que se vean los ArUco)')
         if self.calibrate_on_startup and self.calib_client.wait_for_service(timeout_sec=3.0):
             self._status('calibrando pincel')
             future = self.calib_client.call_async(CalibrateTool.Request(samples=15))

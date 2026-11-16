@@ -1,0 +1,14 @@
+# Cambios a perception.yaml para el robot real (la cámara la lanza stretch_core, ver PRUEBAS.md).
+perception:
+  ros__parameters:
+    color_topic: /camera/color/image_raw
+    depth_topic: /camera/aligned_depth_to_color/image_raw
+    info_topic: /camera/color/camera_info
+    brush:
+      # Cuerpo del plumón azul en HSV de OpenCV (H 0-179). Ajustar con la luz del salón.
+      hsv_low: [100, 120, 60]
+      hsv_high: [130, 255, 255]
+      # Medir con regla el plumón real:
+      tip_beyond_body: 0.017     # de donde acaba el azul del cuerpo a la punta (m)
+      body_radius: 0.009         # radio del cuerpo (m)
+      max_distance_from_gripper: 0.25

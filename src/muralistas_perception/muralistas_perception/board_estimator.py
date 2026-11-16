@@ -97,24 +97,34 @@ class BoardEstimator:
         self.rms = rms
         return self.T_odom_board
 
-    def check_plane(self, depth_m, K, T_odom_cam, stride=4):
-        """Ajusta un plano a la profundidad cerca del mural y lo compara con la normal del ajuste ArUco."""
-        if self.T_odom_board is None:
+    def check_plane(self, depth_m, K, T_odom_cam, stride=4, max_points=3000):
+        """Ajusta un plano a la profundidad del pizarrón y lo compara con la normal del ajuste ArUco.
+
+        Solo usa puntos dentro del rectángulo del pizarrón (la pared alrededor también es plana y
+        con el pizarrón de 1.5 m eran decenas de miles de puntos: ~3 s de RANSAC por cuadro) y
+        como mucho `max_points`, tomados al azar con semilla fija."""
+        T_odom_board = self.T_odom_board
+        if T_odom_board is None:
             return None
         from muralistas_common.geometry import deproject
         pts_cam, _ = deproject(depth_m, *K, stride=stride)
         if len(pts_cam) < 50:
             return None
         pts = transform_points(T_odom_cam, pts_cam)
-        T_board_odom = np.linalg.inv(self.T_odom_board)
+        T_board_odom = np.linalg.inv(T_odom_board)
         local = transform_points(T_board_odom, pts)
-        near = np.abs(local[:, 2]) < 0.05       # solo lo que está cerca de la pared
-        if near.sum() < 50:
+        L = self.layout
+        near = (np.abs(local[:, 2]) < 0.05) & (local[:, 0] >= 0) & (local[:, 0] <= L.width) \
+            & (local[:, 1] >= 0) & (local[:, 1] <= L.height)
+        idx = np.nonzero(near)[0]
+        if len(idx) < 50:
             return None
-        normal, _, _ = fit_plane_ransac(pts[near], threshold=0.008)
+        if len(idx) > max_points:
+            idx = np.random.default_rng(0).choice(idx, max_points, replace=False)
+        normal, _, _ = fit_plane_ransac(pts[idx], threshold=0.008)
         if normal is None:
             return None
-        board_normal = self.T_odom_board[:3, 2]
+        board_normal = T_odom_board[:3, 2]
         cos = abs(float(normal @ board_normal))
         self.plane_angle_deg = float(np.degrees(np.arccos(min(1.0, cos))))
         return self.plane_angle_deg

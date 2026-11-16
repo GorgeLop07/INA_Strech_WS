@@ -13,6 +13,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/StrokeRequest.msg"
   "msg/Board.msg"
   "msg/Decision.msg"
+  "msg/GhostState.msg"
+  "msg/Attempt.msg"
   "srv/SetBrushColor.srv"
   "srv/CalibrateTool.srv"
   "action/DrawStroke.action"

@@ -18,6 +18,7 @@ setup(
     license='MIT',
     entry_points={
         'console_scripts': [
+            'generar_arucos = muralistas_perception.generar_arucos:main',
             'perception = muralistas_perception.perception_node:main',
         ],
     },

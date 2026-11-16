@@ -16,6 +16,7 @@ control:
     travel_speed: 0.10            # m/s con el pincel levantado
     approach_speed: 0.03          # m/s al apoyar y levantar
     retract_on_stop: true
+    pen_idle_lift: 10.0           # s apoyado sin moverse antes de levantar el marcador solo (0 = nunca)
     color_service: /sim/set_brush_color      # en el robot real: "" (o el servicio del cambio de marcador)
     limits:
       lift_min: 0.05
@@ -25,7 +26,8 @@ control:
       base_max: 1.6
     ready_pose: [0.6, 0.05, 0.0, 0.0, 0.0]   # elevador, brazo, muñeca yaw/pitch/roll
     head_work_pose: [-1.5708, -0.6]          # cabeza mirando al pincel y al mural
-    # Barrido de cabeza al arrancar para ubicar el mural (pares pan, tilt)
-    head_scan: [-1.35, -0.45, -1.35, -0.75, -1.57, -0.45, -1.57, -0.75, -1.8, -0.45, -1.8, -0.75]
+    # Barrido de cabeza al arrancar para ubicar el pizarrón (pares pan, tilt). Con el pizarrón de 1.5 m
+    # a ~0.75 m, las esquinas quedan a ±42° del frente: se mira a la izquierda, al centro y a la derecha.
+    head_scan: [-1.0, -0.45, -1.0, -0.75, -1.57, -0.45, -2.15, -0.45, -2.15, -0.75]
     auto_startup: true
     calibrate_on_startup: true

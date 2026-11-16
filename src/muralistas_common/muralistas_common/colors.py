@@ -1,4 +1,11 @@
-"""Paleta de pintura. El verde se reserva para el cuerpo del pincel (la percepción lo segmenta por ese color)."""
+"""Colores. El marcador es uno solo, azul: no hay menú de colores.
+
+La paleta completa se queda para la simulación y RViz. El verde se reserva para el cuerpo del
+pincel simulado (la percepción lo segmenta por ese color); en el robot real se segmenta el azul
+del plumón (parámetros brush.hsv_* de la percepción).
+"""
+
+MARKER_COLOR = 'azul'
 
 PALETTE = {
     'rojo': (0.85, 0.12, 0.12),

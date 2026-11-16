@@ -1,24 +1,58 @@
-# Perfil de un niño. La terapeuta ajusta estos valores; se hace una copia por niño.
+# Perfil de un niño. Lo genera la calibración (datos/perfil_<usuario>_<fecha>.yaml) y la terapeuta
+# lo revisa; se hace una copia por niño. Los argumentos del launch (interaccion, modo, asistencia,
+# nivel) sobrescriben lo de aquí.
+
+# Lo que el launch lee para decidir qué nodos levantar
+perfil:
+  ros__parameters:
+    interaccion: S          # S (solo switch, barrido) | J1 (joystick, confirma quieto) | J2 (joystick y luego switch) | J3 (dos manos)
+    modo: figuras           # figuras (solo S) | libre | rehabilitacion
+    asistencia: media       # alta | media | baja (filtro, velocidad, imán, t_quieto, velocidad del robot en S)
+
+# --- Modo S: menú de barrido -------------------------------------------------------------
 scanning_menu:
   ros__parameters:
     user_id: nino_01
-    mode: figuras            # figuras (trazos preestablecidos) | libre (líneas continuas)
-    level: 3                 # peldaño: 1 causa-efecto, 2 elegir color, 3 componer, 4 copiar un diseño
+    level: 3                 # peldaño del modo figuras: 1 causa-efecto, 2 elegir figura, 3 componer, 4 copiar un diseño
     input: auto              # auto = un switch con barrido automático | pasos = dos switches (avanzar / elegir)
-    scan_interval: 1.5       # segundos por opción
+    scan_interval: 1.5       # segundos por opción (la calibración C1 lo sugiere)
     first_item_delay: 1.5    # la primera opción dura 1.5 veces más (da tiempo de prepararse)
     max_cycles: 4            # vueltas sin elegir antes de pausar el barrido
-    free_activation: toggle  # trazo libre: toggle (presiona para empezar y para parar) | hold (pinta mientras lo sostiene)
-    colors: [rojo, amarillo, azul]
+    free_activation: toggle  # trazo libre y rehabilitación: toggle (presiona para empezar y para parar) | hold (suelta para parar)
     shapes: [linea, ola, circulo, zigzag, puntos, sol]
-    template: ['sol:amarillo:0:0', 'ola:azul:2:1', 'circulo:rojo:1:3']   # solo peldaño 4: fila:columna desde arriba-izquierda
+    template: ['sol:0:0', 'ola:2:1', 'circulo:1:3']   # solo peldaño 4: figura:fila:columna desde arriba-izquierda
     voice: false             # barrido auditivo con spd-say (útil con baja visión)
+    rehab:
+      stage: 0               # etapa inicial: 0 línea, 1 cuadrado, 2 círculo (octágono), 3 casa
+      overshoot: 0.05        # m que se alarga cada tramo, para que el niño se pueda pasar
+      switch_speed: 0.0      # m/s del robot sobre la plantilla; 0 = la del nivel de asistencia
 
 switch_filter:
   ros__parameters:
     acceptance_time: 0.10        # la presión debe durar al menos esto para contar (s)
     post_acceptance_delay: 0.30  # tras una presión aceptada, ignorar las siguientes durante esto (s)
-    joy_buttons: [0, 1]          # botones del joystick/interfaz USB para el switch 1 y el 2
+
+# --- Modos J1, J2, J3: joystick y fantasma ---------------------------------------------------
+entrada_joystick:
+  ros__parameters:
+    user_id: nino_01
+    zona_muerta: 0.10            # C2
+    ganancias: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]   # C3: derecha, arriba-derecha, arriba, ... (antihorario)
+    one_euro:
+      min_cutoff: 0.8            # C7 (Hz)
+      beta: 0.5
+    velocidad_max: 0.18          # m/s del cursor (nivel de asistencia)
+    aceleracion_max: 0.6
+
+fantasma:
+  ros__parameters:
+    user_id: nino_01
+    t_quieto: 0.0                # J1: 0 = el del nivel de asistencia
+    largo_minimo: 0.03           # m: un fantasma más corto no se confirma
+    retraso_arranque: 1.0        # J1: espera antes de que el robot arranque (un movimiento cancela)
+    presion_larga: 1.0           # J2/J3: presión de al menos esto = borrar el fantasma
+    rehab:
+      etapa: 0
 
 decision_logger:
   ros__parameters:

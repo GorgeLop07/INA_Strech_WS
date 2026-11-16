@@ -22,6 +22,10 @@ setup(
             'scanning_menu = muralistas_hri.scanning_menu_node:main',
             'scanning_ui = muralistas_hri.scanning_ui_node:main',
             'decision_logger = muralistas_hri.decision_logger_node:main',
+            'entrada_joystick = muralistas_hri.joystick_input_node:main',
+            'fantasma = muralistas_hri.ghost_node:main',
+            'pantalla_fantasma = muralistas_hri.ghost_ui_node:main',
+            'calibracion = muralistas_hri.calibration_node:main',
         ],
     },
 )
