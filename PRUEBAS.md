@@ -277,10 +277,11 @@ Como en las pruebas del 14-nov: en cada paso digo el comando, qué se mueve y qu
 ```bash
 cd ~/INA_Strech_WS && git pull
 source /opt/ros/humble/setup.bash && source ~/ament_ws/install/setup.bash
-colcon build --symlink-install --packages-skip muralistas_sim && source install/setup.bash
+colcon build --symlink-install --packages-ignore muralistas_sim && source install/setup.bash
 python3 -c "import cv2; print(cv2.__version__, hasattr(cv2.aruco, 'ArucoDetector'))"
 ```
 
+- **Sin simulación:** en el robot no se compila `muralistas_sim` (necesita MuJoCo). `--packages-ignore` hace como si no existiera; `muralistas_bringup` ya no depende de él.
 - **OpenCV:** la última línea debe decir 4.7 o más y `True`. Si dice `False`, la percepción no puede correr en el robot y se corre en la laptop con `parte:=laptop`; lo vemos en ese momento.
 - **Red:** en la laptop y en el robot, el mismo `export ROS_DOMAIN_ID=<n>`. Con el driver corriendo, `ros2 topic list` en la laptop debe mostrar `/joint_states` del robot.
 
