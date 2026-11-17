@@ -11,6 +11,7 @@ Si la pared no está perfectamente paralela a la base, el brazo compensa solo, p
 calcula con la pose real del mural.
 """
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -59,23 +60,35 @@ class CartesianMapper:
             problems.append(f'base {s:.3f} más allá de ±{L.base_max}')
         return problems
 
-    def trajectory(self, board_points, w, speed, start_time=0.0, min_dt=0.05, start_base=None):
+    def trajectory(self, board_points, w, speed, start_time=0.0, min_dt=0.05, start_base=None, accel=None):
         """Puntos del mural a la misma distancia w de la pared -> [(t, (s, lift, ext))].
 
         La velocidad es de la punta. Si start_base se da, el primer tramo arranca desde ahí
-        (la punta actual); si no, el primer punto se alcanza en min_dt.
+        (la punta actual); si no, el primer punto se alcanza en min_dt. Con accel (m/s²) la
+        velocidad sube y baja en rampa (trapecio) al inicio y al final, en vez de arrancar y
+        frenar de golpe: el tirón de la base al arrancar es lo que hace vibrar el trazo.
         """
+        ps = [self.board_to_base(u, v, w) for u, v in board_points]
+        prev0 = np.asarray(start_base) if start_base is not None else None
+        seg = [float(np.linalg.norm(p - q)) for p, q in zip(ps, [prev0] + ps[:-1])] if prev0 is not None \
+            else [0.0] + [float(np.linalg.norm(p - q)) for p, q in zip(ps[1:], ps[:-1])]
+        total = sum(seg)
         out = []
         t = start_time
-        prev = np.asarray(start_base) if start_base is not None else None
-        for u, v in board_points:
-            p = self.board_to_base(u, v, w)
-            if prev is not None:
-                t += max(min_dt, float(np.linalg.norm(p - prev)) / max(speed, 1e-3))
-            else:
+        done = 0.0
+        for i, p in enumerate(ps):
+            if i == 0 and prev0 is None:
                 t += min_dt
+            else:
+                v = max(speed, 1e-3)
+                if accel:
+                    mid = done + seg[i] / 2.0
+                    v_floor = 0.2 * v                     # para no quedarse en 0 en los extremos
+                    v = min(v, math.sqrt(v_floor ** 2 + 2 * accel * mid),
+                            math.sqrt(v_floor ** 2 + 2 * accel * max(total - mid, 0.0)))
+                t += max(min_dt, seg[i] / v)
+            done += seg[i]
             out.append((t, self.joints_for(p)))
-            prev = p
         return out
 
 

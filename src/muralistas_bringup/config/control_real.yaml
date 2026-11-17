@@ -14,6 +14,10 @@ control:
     # El plumón real no tiene el resorte del pincel simulado: se apoya poco para el primer contacto
     # y se sube si no pinta (ver PRUEBAS.md).
     press_depth: 0.003          # m que se empuja contra el pizarrón
+    # Contra la vibración y el tirón de la base al pintar (17-nov): más lento y con rampa al
+    # arrancar y frenar. Si el trazo sigue temblando, baja max_draw_speed; si tarda mucho, súbelo.
+    max_draw_speed: 0.025       # m/s, tope al pintar (el planeador pide 0.05)
+    draw_accel: 0.05            # m/s²: llega a 0.025 m/s en ~6 mm de trazo
     hover_distance: 0.03        # m de separación con el marcador levantado
     pen_idle_lift: 10.0         # s apoyado sin moverse antes de levantarlo solo
     # Por confirmar con el marcador puesto:

@@ -49,3 +49,15 @@ def test_tiempos_con_velocidad():
     m = make_mapper()
     traj = m.trajectory([(1.5, 0.5), (1.4, 0.5)], w=0.0, speed=0.05)
     assert np.isclose(traj[1][0] - traj[0][0], 0.1 / 0.05)
+
+
+def test_rampa_arranca_y_frena_suave():
+    m = make_mapper()
+    pts = densify([(1.5, 0.5), (1.3, 0.5)], step=0.01)
+    plano = m.trajectory(pts, w=0.0, speed=0.025)
+    rampa = m.trajectory(pts, w=0.0, speed=0.025, accel=0.05)
+    dt = np.diff([t for t, _ in rampa])
+    assert dt[0] > dt[len(dt) // 2] and dt[-1] > dt[len(dt) // 2]          # lento en los extremos
+    assert np.isclose(dt[len(dt) // 2], 0.01 / 0.025)                      # crucero a la velocidad pedida
+    assert rampa[-1][0] > plano[-1][0]
+    assert np.allclose([j for _, j in rampa], [j for _, j in plano])       # mismos puntos, otros tiempos

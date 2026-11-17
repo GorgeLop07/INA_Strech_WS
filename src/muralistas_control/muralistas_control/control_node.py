@@ -83,6 +83,9 @@ class ControlNode(Node):
         self.draw_speed = p('draw_speed', 0.05).value
         self.travel_speed = p('travel_speed', 0.10).value
         self.approach_speed = p('approach_speed', 0.03).value
+        # Tope de la velocidad al pintar (gana a la que pida el planeador) y rampa de arranque/frenado
+        self.max_draw_speed = p('max_draw_speed', 0.0).value     # 0 = sin tope
+        self.draw_accel = p('draw_accel', 0.0).value             # m/s²; 0 = sin rampa
         self.retract_on_stop = p('retract_on_stop', True).value
         self.pen_idle_lift = p('pen_idle_lift', 10.0).value      # s; 0 = nunca
         self.continue_radius = p('continue_radius', 0.015).value  # m: un trazo que empieza aquí sigue sin levantar
@@ -288,9 +291,9 @@ class ControlNode(Node):
             goal.multi_dof_trajectory.points += [_base_point(t, q[base_i]) for t, q in points]
         return goal
 
-    def _cartesian_phase(self, board_points, w, speed, goal_handle=None):
+    def _cartesian_phase(self, board_points, w, speed, goal_handle=None, accel=None):
         mapper, tip = self._geometry()
-        traj = mapper.trajectory(board_points, w, speed, start_base=tip)
+        traj = mapper.trajectory(board_points, w, speed, start_base=tip, accel=accel or None)
         for _, joints in traj:
             problems = mapper.check(joints)
             if problems:
@@ -349,6 +352,8 @@ class ControlNode(Node):
         if g.relative_to_current:
             pts = [(tip_uv[0] + du, tip_uv[1] + dv) for du, dv in pts]
         speed = g.speed if g.speed > 0 else self.draw_speed
+        if self.max_draw_speed > 0:
+            speed = min(speed, self.max_draw_speed)
 
         if g.color and g.color != self.color:
             self._change_color(g.color)
@@ -394,7 +399,8 @@ class ControlNode(Node):
             feedback.pen_down = self.pen_down
             goal_handle.publish_feedback(feedback)
             try:
-                outcome = self._cartesian_phase(board_pts, w, v, goal_handle)
+                outcome = self._cartesian_phase(board_pts, w, v, goal_handle,
+                                                accel=self.draw_accel if name == 'pintar' else None)
             except Exception as exc:
                 self._status('error')
                 goal_handle.abort()
