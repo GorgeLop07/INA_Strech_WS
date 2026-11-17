@@ -12,7 +12,10 @@ Corrección con vistas recientes: si la base patina o gira al apoyar el marcador
 las ruedas no lo ve y el ajuste acumulado tarda decenas de cuadros en alcanzarlo. Por eso, sobre
 el ajuste acumulado se aplica una corrección en el plano del piso (x, y, giro) calculada solo con
 las esquinas vistas en los últimos `fresh_age` segundos, y solo si son de `fresh_min_markers`
-marcadores o más. Sin vistas recientes suficientes se mantiene la última corrección.
+marcadores o más. Sin vistas recientes suficientes se mantiene la última corrección, y una
+corrección más grande que `max_correction_mm` / `max_correction_deg` se descarta (un desliz así no
+pasa en un trazo: es una mala medición). Los cuadros con la cámara en movimiento no se usan
+(perception_node: la pose de la cámara y la imagen no coinciden bien mientras gira la cabeza).
 
 Además se ajusta un plano a la nube de profundidad alrededor de los marcadores y se reporta
 cuánto difiere su normal de la del ajuste por ArUco (sirve como chequeo de consistencia).
@@ -78,7 +81,8 @@ def planar_correction(src, dst):
 
 
 class BoardEstimator:
-    def __init__(self, layout, history=30, max_depth=3.0, fresh_age=2.0, fresh_min_markers=2):
+    def __init__(self, layout, history=30, max_depth=3.0, fresh_age=2.0, fresh_min_markers=2,
+                 max_correction_mm=80.0, max_correction_deg=4.0):
         self.layout = layout
         self.markers = layout.marker_positions()
         self.obs = defaultdict(lambda: deque(maxlen=history))   # (id, esquina) -> puntos en odom
@@ -91,6 +95,9 @@ class BoardEstimator:
         self.correction = np.eye(4)                 # odom -> odom corregido (x, y, giro)
         self.fresh_markers = 0                      # marcadores en la última corrección
         self.fresh_time = None                      # tiempo de la última corrección
+        self.max_correction_mm = max_correction_mm  # más que esto se descarta como mala medición
+        self.max_correction_deg = max_correction_deg
+        self.rejected = None                        # (mm, °, marcadores) de la última descartada
         self.rms = None
         self.plane_angle_deg = None
         self._t = 0.0
@@ -112,9 +119,7 @@ class BoardEstimator:
         return used
 
     def add_corner(self, marker_id, k, p_odom, t):
-        # Lo acumulado se guarda sin la deriva actual (inversa de la corrección), para que el ajuste
-        # completo no mezcle vistas de antes y después de que patinó la base
-        self.obs[(marker_id, k)].append(transform_points(np.linalg.inv(self.correction), p_odom)[0])
+        self.obs[(marker_id, k)].append(np.asarray(p_odom, float))
         self.fresh[(marker_id, k)].append((t, np.asarray(p_odom, float)))
         self._t = max(self._t, t)
 
@@ -151,7 +156,13 @@ class BoardEstimator:
             ids.add(marker_id)
         if len(ids) < self.fresh_min_markers:
             return                                  # se queda la última corrección
-        self.correction = planar_correction(src, dst)
+        C = planar_correction(src, dst)
+        mm, deg = float(np.linalg.norm(C[:2, 3]) * 1000), float(np.degrees(math.atan2(C[1, 0], C[0, 0])))
+        if mm > self.max_correction_mm or abs(deg) > self.max_correction_deg:
+            # Un desliz así no pasa en un trazo: es una mala medición (cámara moviéndose, reflejo)
+            self.rejected = (mm, deg, len(ids))
+            return
+        self.correction = C
         self.fresh_markers = len(ids)
         self.fresh_time = self._t
 
@@ -206,4 +217,5 @@ class BoardEstimator:
         self.correction = np.eye(4)
         self.fresh_markers = 0
         self.fresh_time = None
+        self.rejected = None
         self.rms = None

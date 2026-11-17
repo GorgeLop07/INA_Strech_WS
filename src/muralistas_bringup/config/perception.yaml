@@ -16,6 +16,13 @@ perception:
       # son fresh_min_markers ArUco o más (corrección en x, y y giro sobre el piso)
       fresh_age: 2.0
       fresh_min_markers: 2
+      # Más que esto no es un desliz de la base: se descarta (17-nov salió una de 236 mm mala)
+      max_correction_mm: 80.0
+      max_correction_deg: 4.0
+      # Los cuadros con la cámara moviéndose más de esto en los still_window s previos no se usan
+      still_window: 0.15
+      still_max_deg: 0.6
+      still_max_m: 0.005
     brush:
       tip_beyond_body: 0.017   # de donde acaba el cuerpo verde a la punta (m)
       body_radius: 0.011

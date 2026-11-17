@@ -66,7 +66,15 @@ class PerceptionNode(Node):
         # se recoloca con lo visto en los últimos fresh_age s, con fresh_min_markers ArUco o más
         self.board = BoardEstimator(self.layout, history=p('board.history', 30).value,
                                     fresh_age=p('board.fresh_age', 2.0).value,
-                                    fresh_min_markers=p('board.fresh_min_markers', 2).value)
+                                    fresh_min_markers=p('board.fresh_min_markers', 2).value,
+                                    max_correction_mm=p('board.max_correction_mm', 80.0).value,
+                                    max_correction_deg=p('board.max_correction_deg', 4.0).value)
+        # Cámara en movimiento (cabeza girando, base andando): la pose de la cámara y la imagen no
+        # coinciden bien y las esquinas salen corridas centímetros. Esos cuadros no se usan para el pizarrón.
+        self.still_window = p('board.still_window', 0.15).value       # s antes de la imagen
+        self.still_max_deg = p('board.still_max_deg', 0.6).value
+        self.still_max_m = p('board.still_max_m', 0.005).value
+        self._last_rejected = None
         self.aruco = ArucoDetector()
 
         self.tf_buffer = Buffer()
@@ -129,8 +137,10 @@ class PerceptionNode(Node):
         K = (info_msg.k[0], info_msg.k[4], info_msg.k[2], info_msg.k[5])
         gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
 
-        # 1) Mural: ArUco + profundidad, acumulado en odom
+        # 1) Mural: ArUco + profundidad, acumulado en odom (solo con la cámara quieta)
         detections = self.aruco.detect(gray)
+        if detections and not self._camera_still(T_odom_cam, stamp, cam_frame):
+            detections = {}
         if detections:
             with self._board_lock:      # /perception/reset_board corre en otro hilo
                 self.board.add_frame(detections, depth, K, T_odom_cam, t=Time.from_msg(stamp).nanoseconds * 1e-9)
@@ -141,6 +151,11 @@ class PerceptionNode(Node):
                         self._last_plane = now
                         self.board.check_plane(depth, K, T_odom_cam)
                     self._publish_board(stamp)
+                    if self.board.rejected is not None and self.board.rejected != self._last_rejected:
+                        self._last_rejected = self.board.rejected
+                        mm, deg, n = self.board.rejected
+                        self.get_logger().warn(f'Corrección del pizarrón descartada ({mm:.0f} mm, {deg:+.1f}° con '
+                                               f'{n} ArUco): demasiado grande para ser un desliz de la base')
 
         # 2) Nube 3D a color (lo que ve la cabeza)
         if now - self._last_cloud > 1.0 / self.cloud_rate:
@@ -179,6 +194,17 @@ class PerceptionNode(Node):
         if self.rotate_debug:
             vis = np.ascontiguousarray(np.rot90(vis, -1))
         self.pub_debug.publish(numpy_to_image(vis, stamp, cam_frame))
+
+    def _camera_still(self, T_odom_cam, stamp, cam_frame):
+        """True si la cámara casi no se movió en los still_window s antes de la imagen."""
+        try:
+            before = Time.from_msg(stamp) - Duration(seconds=self.still_window)
+            T0 = transform_to_matrix(self.tf_buffer.lookup_transform(self.odom_frame, cam_frame, before))
+        except Exception:
+            return True                     # sin historia de TF todavía: no se puede saber
+        dR = T0[:3, :3].T @ T_odom_cam[:3, :3]
+        angle = np.degrees(np.arccos(np.clip((np.trace(dR) - 1) / 2, -1.0, 1.0)))
+        return angle <= self.still_max_deg and np.linalg.norm(T_odom_cam[:3, 3] - T0[:3, 3]) <= self.still_max_m
 
     # --- Publicación ---------------------------------------------------------
     def _publish_board(self, stamp):

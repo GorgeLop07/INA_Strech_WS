@@ -463,7 +463,7 @@ class ControlNode(Node):
         if dev and max(abs(d) for d in dev.values()) > self.wrist_tolerance:
             self.get_logger().info('Enderezo la muñeca antes de apoyar: ' + ', '.join(
                 f'{n.replace("joint_wrist_", "")} {math.degrees(d):+.1f}°' for n, d in dev.items()))
-            self._run_trajectory(list(self.wrist_hold), [(0.8, tuple(self.wrist_hold.values()))])
+            self._move(list(self.wrist_hold), tuple(self.wrist_hold.values()), 0.8)
         if self.board_refresh:
             try:
                 self._refresh_board()
@@ -495,7 +495,7 @@ class ControlNode(Node):
         pan, tilt, u_col = self._head_target()
         q_pan, q_tilt = self.joints.get('joint_head_pan', pan), self.joints.get('joint_head_tilt', tilt)
         if abs(pan - q_pan) > 0.03 or abs(tilt - q_tilt) > 0.03:
-            self._run_trajectory(['joint_head_pan', 'joint_head_tilt'], [(1.0, (pan, tilt))])
+            self._move(['joint_head_pan', 'joint_head_tilt'], (pan, tilt), 1.0)
         asked = self.get_clock().now()
         deadline = time.monotonic() + self.board_refresh_timeout
         while time.monotonic() < deadline and not self.stopped:
@@ -553,11 +553,24 @@ class ControlNode(Node):
             p = tip + mapper.T[:3, 2] * (self.hover + self.press)   # alejarse en la normal del mural
             s, lift, ext = mapper.joints_for(p)
             was_stopped, self.stopped = self.stopped, False
-            self._run_trajectory([self.lift_joint, self.ext_joint], [(1.0, (lift, ext))])
+            self._move([self.lift_joint, self.ext_joint], (lift, ext), 1.0)
             self.stopped = was_stopped
             self._set_pen(False)
         except Exception as exc:
             self.get_logger().error(f'No pude levantar el pincel tras el paro: {exc}')
+
+    # Velocidad media para los movimientos punto a punto. El driver rechaza la trayectoria entera si
+    # una articulación pasa su límite (elevador: 0.15 m/s de media por tramo; 17-nov: 0.4 m en 2 s se rechazó).
+    MOVE_SPEED = {'joint_lift': 0.10, 'wrist_extension': 0.10, 'joint_head_pan': 0.8, 'joint_head_tilt': 0.8,
+                  'joint_wrist_yaw': 0.6, 'joint_wrist_pitch': 0.6, 'joint_wrist_roll': 0.6}
+
+    def _move(self, names, target, minimum):
+        """Va a target en al menos `minimum` s, más si la distancia lo pide para no pasar los límites."""
+        t = minimum
+        for n, q in zip(names, target):
+            if n in self.joints and n in self.MOVE_SPEED:
+                t = max(t, abs(float(q) - self.joints[n]) / self.MOVE_SPEED[n])
+        return self._run_trajectory(names, [(t, tuple(target))])
 
     # --- Arranque -----------------------------------------------------------
     def _on_startup(self, request, response):
@@ -573,7 +586,7 @@ class ControlNode(Node):
             return False, 'No llegan /joint_states'
         self._status('pose inicial')
         names = list(self.ready_pose) + ['joint_head_pan', 'joint_head_tilt']
-        self._run_trajectory(names, [(3.0, list(self.ready_pose.values()) + list(self.head_work))])
+        self._move(names, list(self.ready_pose.values()) + list(self.head_work), 3.0)
         # Si la percepción todavía no procesa imágenes, el barrido se desperdicia: esperar su primera nube
         deadline = time.monotonic() + 30.0
         while self._perception_frames == 0 and time.monotonic() < deadline:
@@ -584,18 +597,17 @@ class ControlNode(Node):
         expected = self.board_markers_expected
         poses = ', '.join(f'({a:.2f}, {b:.2f})' for a, b in self.head_scan)
         self.get_logger().info(f'Barrido de cabeza (pan, tilt): {poses}')
-        self._run_trajectory([self.lift_joint, self.ext_joint], [(2.0, self.scan_pose)])
+        self._move([self.lift_joint, self.ext_joint], self.scan_pose, 2.0)
         for attempt in range(2):
             for pan, tilt in self.head_scan:
-                self._run_trajectory(['joint_head_pan', 'joint_head_tilt'], [(1.2, (pan, tilt))])
+                self._move(['joint_head_pan', 'joint_head_tilt'], (pan, tilt), 1.2)
                 time.sleep(self.head_scan_dwell)
             if self._board_markers >= expected:
                 break
             if attempt == 0:
                 self.get_logger().info(f'El barrido vio {self._board_markers} de {expected} marcadores: lo repito')
-        self._run_trajectory([self.lift_joint, self.ext_joint, 'joint_head_pan', 'joint_head_tilt'],
-                             [(2.0, (self.ready_pose['joint_lift'], self.ready_pose['wrist_extension'])
-                               + tuple(self.head_work))])
+        self._move([self.lift_joint, self.ext_joint, 'joint_head_pan', 'joint_head_tilt'],
+                   (self.ready_pose['joint_lift'], self.ready_pose['wrist_extension']) + tuple(self.head_work), 2.0)
         try:
             self._lookup(self.base_frame, self.board_frame)
             found = True
