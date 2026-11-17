@@ -8,9 +8,17 @@ esquina en 3D) se ajusta la transformación rígida mural -> odom. Basta un solo
 Como la cámara de la cabeza solo ve una franja del mural, las observaciones se acumulan en el
 marco odom (fijo): conforme la cabeza o la base se mueven, se suman marcadores nuevos.
 
+Corrección con vistas recientes: si la base patina o gira al apoyar el marcador, la odometría de
+las ruedas no lo ve y el ajuste acumulado tarda decenas de cuadros en alcanzarlo. Por eso, sobre
+el ajuste acumulado se aplica una corrección en el plano del piso (x, y, giro) calculada solo con
+las esquinas vistas en los últimos `fresh_age` segundos, y solo si son de `fresh_min_markers`
+marcadores o más. Sin vistas recientes suficientes se mantiene la última corrección.
+
 Además se ajusta un plano a la nube de profundidad alrededor de los marcadores y se reporta
 cuánto difiere su normal de la del ajuste por ArUco (sirve como chequeo de consistencia).
 """
+
+import math
 
 from collections import defaultdict, deque
 
@@ -56,18 +64,40 @@ def pixel_to_optical(px, py, z, K):
     return np.array([(px - cx) * z / fx, (py - cy) * z / fy, z])
 
 
+def planar_correction(src, dst):
+    """Giro alrededor de z y traslación en x, y que llevan src a dst (solo se usa x, y). 4x4."""
+    a, b = np.asarray(src, float)[:, :2], np.asarray(dst, float)[:, :2]
+    ca, cb = a.mean(axis=0), b.mean(axis=0)
+    a0, b0 = a - ca, b - cb
+    yaw = math.atan2(float(np.sum(a0[:, 0] * b0[:, 1] - a0[:, 1] * b0[:, 0])), float(np.sum(a0 * b0)))
+    c, s = math.cos(yaw), math.sin(yaw)
+    R = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+    t = np.zeros(3)
+    t[:2] = cb - R[:2, :2] @ ca
+    return make_transform(R, t)
+
+
 class BoardEstimator:
-    def __init__(self, layout, history=30, max_depth=3.0):
+    def __init__(self, layout, history=30, max_depth=3.0, fresh_age=2.0, fresh_min_markers=2):
         self.layout = layout
         self.markers = layout.marker_positions()
         self.obs = defaultdict(lambda: deque(maxlen=history))   # (id, esquina) -> puntos en odom
+        self.fresh = defaultdict(lambda: deque(maxlen=10))      # (id, esquina) -> (tiempo, punto)
         self.max_depth = max_depth
+        self.fresh_age = fresh_age                  # s; <= 0 apaga la corrección
+        self.fresh_min_markers = fresh_min_markers
         self.T_odom_board = None
+        self.T_full = None                          # ajuste con todo lo acumulado
+        self.correction = np.eye(4)                 # odom -> odom corregido (x, y, giro)
+        self.fresh_markers = 0                      # marcadores en la última corrección
+        self.fresh_time = None                      # tiempo de la última corrección
         self.rms = None
         self.plane_angle_deg = None
+        self._t = 0.0
 
-    def add_frame(self, detections, depth_m, K, T_odom_cam):
-        """Agrega las esquinas de un cuadro. Devuelve cuántas esquinas válidas se usaron."""
+    def add_frame(self, detections, depth_m, K, T_odom_cam, t=None):
+        """Agrega las esquinas de un cuadro (t: tiempo de la imagen, s). Devuelve cuántas se usaron."""
+        self._t = t if t is not None else self._t + 0.1
         used = 0
         for marker_id, corners in detections.items():
             if marker_id not in self.markers:
@@ -77,12 +107,19 @@ class BoardEstimator:
                 if z is None or z > self.max_depth:
                     continue
                 p_cam = pixel_to_optical(px, py, z, K)
-                self.obs[(marker_id, k)].append(transform_points(T_odom_cam, p_cam)[0])
+                self.add_corner(marker_id, k, transform_points(T_odom_cam, p_cam)[0], self._t)
                 used += 1
         return used
 
+    def add_corner(self, marker_id, k, p_odom, t):
+        # Lo acumulado se guarda sin la deriva actual (inversa de la corrección), para que el ajuste
+        # completo no mezcle vistas de antes y después de que patinó la base
+        self.obs[(marker_id, k)].append(transform_points(np.linalg.inv(self.correction), p_odom)[0])
+        self.fresh[(marker_id, k)].append((t, np.asarray(p_odom, float)))
+        self._t = max(self._t, t)
+
     def fit(self):
-        """Ajusta mural -> odom con todas las esquinas acumuladas."""
+        """Ajusta mural -> odom con todo lo acumulado y le aplica la corrección por vistas recientes."""
         src, dst = [], []
         for (marker_id, k), pts in self.obs.items():
             if not pts:
@@ -93,9 +130,35 @@ class BoardEstimator:
         if len(src) < 3:
             return None
         R, t, rms = fit_rigid(np.array(src), np.array(dst))
-        self.T_odom_board = make_transform(R, t)
+        self.T_full = make_transform(R, t)
         self.rms = rms
+        self._fresh_correction()
+        self.T_odom_board = self.correction @ self.T_full
         return self.T_odom_board
+
+    def _fresh_correction(self):
+        if self.fresh_age <= 0:
+            return
+        src, dst, ids = [], [], set()
+        for (marker_id, k), obs in self.fresh.items():
+            recent = [p for t, p in obs if self._t - t <= self.fresh_age]
+            if not recent:
+                continue
+            u, v = self.markers[marker_id]
+            corner = marker_corner_coords(u, v, self.layout.marker_size)[k]
+            src.append(transform_points(self.T_full, corner)[0])
+            dst.append(np.median(np.array(recent), axis=0))
+            ids.add(marker_id)
+        if len(ids) < self.fresh_min_markers:
+            return                                  # se queda la última corrección
+        self.correction = planar_correction(src, dst)
+        self.fresh_markers = len(ids)
+        self.fresh_time = self._t
+
+    def correction_summary(self):
+        """(mm de traslación, grados de giro) de la corrección actual."""
+        C = self.correction
+        return float(np.linalg.norm(C[:2, 3]) * 1000), float(np.degrees(math.atan2(C[1, 0], C[0, 0])))
 
     def check_plane(self, depth_m, K, T_odom_cam, stride=4, max_points=3000):
         """Ajusta un plano a la profundidad del pizarrón y lo compara con la normal del ajuste ArUco.
@@ -137,5 +200,10 @@ class BoardEstimator:
 
     def reset(self):
         self.obs.clear()
+        self.fresh.clear()
         self.T_odom_board = None
+        self.T_full = None
+        self.correction = np.eye(4)
+        self.fresh_markers = 0
+        self.fresh_time = None
         self.rms = None

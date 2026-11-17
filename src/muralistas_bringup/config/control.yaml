@@ -26,6 +26,13 @@ control:
       base_max: 1.6
     ready_pose: [0.6, 0.05, 0.0, 0.0, 0.0]   # elevador, brazo, muñeca yaw/pitch/roll
     hold_wrist: true        # cada trazo vuelve a mandar la muñeca a la ready_pose (el pitch se cae con el peso)
+    wrist_tolerance: 0.03   # rad (~1.7°): antes de apoyar, si la muñeca se desvió más, se endereza
+    # Antes de apoyar: la cabeza mira la columna de ArUco más cercana y espera una corrección del
+    # pizarrón con board_refresh_min_markers o más vistos; si no llega en board_refresh_timeout s,
+    # avisa en el log y pinta con la última ubicación
+    board_refresh: true
+    board_refresh_min_markers: 2
+    board_refresh_timeout: 3.0
     head_work_pose: [-1.5708, -0.6]          # cabeza mirando al pincel y al mural
     # Barrido de cabeza al arrancar para ubicar el pizarrón. Se calcula solo con config/mural.yaml
     # (muralistas_common/head_scan.py) y sale en el log ("Barrido de cabeza (pan, tilt): ...").

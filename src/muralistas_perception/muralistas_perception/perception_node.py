@@ -62,7 +62,11 @@ class PerceptionNode(Node):
                                     tip_beyond_body=p('brush.tip_beyond_body', 0.017).value,
                                     body_radius=p('brush.body_radius', 0.011).value,
                                     max_distance_from_gripper=p('brush.max_distance_from_gripper', 0.30).value)
-        self.board = BoardEstimator(self.layout, history=p('board.history', 30).value)
+        # Corrección por vistas recientes (ver board_estimator.py): si la base patina, el pizarrón
+        # se recoloca con lo visto en los últimos fresh_age s, con fresh_min_markers ArUco o más
+        self.board = BoardEstimator(self.layout, history=p('board.history', 30).value,
+                                    fresh_age=p('board.fresh_age', 2.0).value,
+                                    fresh_min_markers=p('board.fresh_min_markers', 2).value)
         self.aruco = ArucoDetector()
 
         self.tf_buffer = Buffer()
@@ -129,7 +133,7 @@ class PerceptionNode(Node):
         detections = self.aruco.detect(gray)
         if detections:
             with self._board_lock:      # /perception/reset_board corre en otro hilo
-                self.board.add_frame(detections, depth, K, T_odom_cam)
+                self.board.add_frame(detections, depth, K, T_odom_cam, t=Time.from_msg(stamp).nanoseconds * 1e-9)
                 T = self.board.fit()
                 if T is not None:
                     self._T_odom_board = T
@@ -191,6 +195,10 @@ class PerceptionNode(Node):
         msg.corners_used = self.board.corners_used()
         msg.rms_error = float(self.board.rms or 0.0)
         msg.plane_normal_angle_deg = float(self.board.plane_angle_deg or -1.0)
+        msg.fresh_markers = self.board.fresh_markers
+        if self.board.fresh_time is not None:
+            msg.fresh_stamp = Time(nanoseconds=int(self.board.fresh_time * 1e9)).to_msg()
+        msg.correction_mm, msg.correction_deg = self.board.correction_summary()
         self.pub_board.publish(msg)
 
     def _republish_board_tf(self):

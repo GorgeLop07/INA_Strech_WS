@@ -395,6 +395,24 @@ ros2 launch muralistas_bringup real_mural.launch.py parte:=laptop interaccion:=J
 
 Es el mismo flujo que S3 y S5. El pizarrón no se borra solo: entre intentos lo borra el adulto, o se dibuja encima.
 
+### F7. Deriva de la base y muñeca (17-nov, sí se mueve)
+
+Al pintar en el robot real, la presión del marcador a veces hace que la base gire o patine, y la odometría de las ruedas no lo ve; también la muñeca (yaw) se desvía cuando el marcador se atora. Cambios:
+
+- **Más lento y con rampa** (`control_real.yaml`): `max_draw_speed: 0.025` m/s y `draw_accel: 0.05` m/s², para que la base no arranque ni frene de golpe.
+- **El pizarrón se recoloca antes de cada trazo:** antes de apoyar el marcador, la cabeza mira la columna de ArUco más cercana (abajo y arriba: 2 marcadores) y espera hasta 3 s una corrección calculada solo con lo visto en los últimos 2 s y con 2 ArUco o más (`board_refresh*` en `control.yaml`; `board.fresh_*` en `perception.yaml`). La corrección es en el piso (x, y, giro) sobre la ubicación completa del arranque. Si la base patinó en un trazo, el siguiente empieza bien. No corrige a mitad del trazo.
+- **Muñeca:** cada trazo manda la muñeca a 0 (`hold_wrist`); antes de apoyar, si se desvió más de `wrist_tolerance` (1.7°) se endereza, y al terminar de pintar se avisa en el log si se desvió.
+
+**En simulación (primero):**
+
+```bash
+ros2 launch muralistas_bringup sim_mural.launch.py interaccion:=S modo:=figuras nivel:=3
+```
+
+Elige una línea. **Qué esperar:** antes de apoyar, la cabeza gira hacia la columna de ArUco más cercana (estado "ubicar", ~1–2 s) y luego pinta. En el log no debe salir `No vi 2 ArUco en 3 s`. Como en la simulación la base no patina, no debe salir `Pizarrón corregido ...` con más de 5 mm. `ros2 topic echo /perception/board --once` muestra `fresh_markers: 2` (o más) y `correction_mm` cerca de 0.
+
+**En el robot** (después de `git pull` y compilar con `--packages-ignore muralistas_sim`; cambió `Board.msg`, así que se recompila todo): F3 y luego F6. **Qué esperar:** lo mismo que en la simulación. Cuando la base patine, en el log sale `Pizarrón corregido con 2 ArUco recientes: N mm, ±X° de deriva` y el siguiente trazo cae en su lugar. Si sale `No vi 2 ArUco en 3 s`, revisa en `/perception/debug_image` (comprimida) qué ve la cabeza: el pan/tilt que intentó sale en el mismo mensaje. Si la muñeca se atora, sale `La muñeca se desvió al pintar ...` con los grados.
+
 ---
 
 ## 3. Si el pizarrón cambia de tamaño

@@ -100,6 +100,14 @@ class ControlNode(Node):
         # cayendo. Con hold_wrist cada trazo la vuelve a mandar a la ready_pose.
         self.hold_wrist = p('hold_wrist', True).value
         self.wrist_hold = {n: v for n, v in self.ready_pose.items() if n.startswith('joint_wrist_')}
+        self.wrist_tolerance = p('wrist_tolerance', 0.03).value     # rad: antes de apoyar, si se desvió, se regresa
+        # Antes de apoyar el marcador: la cabeza mira la columna de ArUco más cercana y se espera una
+        # corrección del pizarrón con board_refresh_min_markers o más vistos en ese momento (si la base
+        # patinó en el trazo anterior, el siguiente empieza bien). Ver board_estimator.py.
+        self.board_refresh = p('board_refresh', True).value
+        self.board_refresh_min = p('board_refresh_min_markers', 2).value
+        self.board_refresh_timeout = p('board_refresh_timeout', 3.0).value
+        self.camera_height = p('scan.camera_height', 1.30).value
         self.layout = MuralLayout.from_dict({k: p(f'mural.{k}', v).value for k, v in MuralLayout().__dict__.items()})
         if p('head_scan_auto', True).value:
             # Calculado con el pizarrón de config/mural.yaml: ver head_scan.py
@@ -137,6 +145,7 @@ class ControlNode(Node):
         # Arranque: saber si la percepción ya procesa imágenes y cuántos marcadores lleva vistos
         self._perception_frames = 0
         self._board_markers = 0
+        self._board_msg = None
         self.create_subscription(PointCloud2, '/perception/points', self._on_cloud, 2, callback_group=self.cb)
         self.create_subscription(Board, '/perception/board', self._on_board, latched, callback_group=self.cb)
         self.pub_tip = self.create_publisher(PointStamped, '/control/tip_board', 10)
@@ -176,6 +185,7 @@ class ControlNode(Node):
 
     def _on_board(self, msg):
         self._board_markers = msg.markers_used
+        self._board_msg = msg
 
     def _on_tool_offset(self, msg):
         if self.use_calibrated_tool:
@@ -394,6 +404,8 @@ class ControlNode(Node):
 
         drawn = 0.0
         for i, (name, board_pts, w, v, pen_after) in enumerate(phases):
+            if name == 'apoyar':
+                self._before_contact()
             self._status(name)
             feedback.progress = i / max(1, len(phases))
             feedback.pen_down = self.pen_down
@@ -412,6 +424,10 @@ class ControlNode(Node):
                     self._set_pen(pen_after)
                 if name == 'pintar':
                     drawn = path_length(board_pts)
+                    dev = self._wrist_deviation()
+                    if dev and max(abs(d) for d in dev.values()) > self.wrist_tolerance:
+                        self.get_logger().warn('La muñeca se desvió al pintar (¿se atoró el marcador?): ' + ', '.join(
+                            f'{n.replace("joint_wrist_", "")} {math.degrees(d):+.1f}°' for n, d in dev.items()))
                 continue
             # Cancelado (el niño detuvo el trazo libre) o paro
             if outcome == 'canceled' and g.lift_at_end and self.pen_down:
@@ -434,6 +450,69 @@ class ControlNode(Node):
         result.drawn_length = float(drawn)
         result.message = 'Trazo terminado'
         return result
+
+    # --- Antes de apoyar: muñeca derecha y pizarrón recién visto ----------------
+    def _wrist_deviation(self):
+        """{articulación: desviación (rad)} respecto a la pose de trabajo, o {} sin hold_wrist."""
+        if not self.hold_wrist:
+            return {}
+        return {n: self.joints[n] - v for n, v in self.wrist_hold.items() if n in self.joints}
+
+    def _before_contact(self):
+        dev = self._wrist_deviation()
+        if dev and max(abs(d) for d in dev.values()) > self.wrist_tolerance:
+            self.get_logger().info('Enderezo la muñeca antes de apoyar: ' + ', '.join(
+                f'{n.replace("joint_wrist_", "")} {math.degrees(d):+.1f}°' for n, d in dev.items()))
+            self._run_trajectory(list(self.wrist_hold), [(0.8, tuple(self.wrist_hold.values()))])
+        if self.board_refresh:
+            try:
+                self._refresh_board()
+            except Exception as exc:
+                self.get_logger().warn(f'No pude volver a ubicar el pizarrón: {exc}')
+
+    def _head_target(self):
+        """(pan, tilt) para ver la columna de ArUco (abajo y arriba) más cercana a la cabeza."""
+        try:
+            head = self._lookup(self.base_frame, 'link_head_tilt')[:3, 3]
+        except Exception:                           # sin TF de la cabeza: sobre la base, a camera_height
+            head = np.array([0.0, 0.0, self.camera_height])
+        T_board_base = self._lookup(self.board_frame, self.base_frame)
+        u_head = (T_board_base[:3, :3] @ head + T_board_base[:3, 3])[0]
+        columns = {}
+        for u, v in self.layout.marker_positions().values():
+            columns.setdefault(round(u, 4), []).append(v)
+        u_col = min(columns, key=lambda u: abs(u - u_head))
+        v_mid = (min(columns[u_col]) + max(columns[u_col])) / 2.0
+        target = self._lookup(self.base_frame, self.board_frame) @ np.array([u_col, v_mid, 0.0, 1.0])
+        d = target[:3] - head
+        pan = math.atan2(d[1], d[0])
+        tilt = math.atan2(d[2], math.hypot(d[0], d[1]))
+        return pan, tilt, u_col
+
+    def _refresh_board(self):
+        """Mira la columna de ArUco más cercana y espera una corrección con suficientes marcadores."""
+        self._status('ubicar')
+        pan, tilt, u_col = self._head_target()
+        q_pan, q_tilt = self.joints.get('joint_head_pan', pan), self.joints.get('joint_head_tilt', tilt)
+        if abs(pan - q_pan) > 0.03 or abs(tilt - q_tilt) > 0.03:
+            self._run_trajectory(['joint_head_pan', 'joint_head_tilt'], [(1.0, (pan, tilt))])
+        asked = self.get_clock().now()
+        deadline = time.monotonic() + self.board_refresh_timeout
+        while time.monotonic() < deadline and not self.stopped:
+            m = self._board_msg
+            if m is not None and m.fresh_markers >= self.board_refresh_min \
+                    and Time.from_msg(m.fresh_stamp) >= asked:
+                if m.correction_mm > 5.0 or abs(m.correction_deg) > 0.5:
+                    self.get_logger().info(f'Pizarrón corregido con {m.fresh_markers} ArUco recientes: '
+                                           f'{m.correction_mm:.0f} mm, {m.correction_deg:+.1f}° de deriva')
+                return True
+            time.sleep(0.05)
+        m = self._board_msg
+        self.get_logger().warn(
+            f'No vi {self.board_refresh_min} ArUco en {self.board_refresh_timeout:.0f} s (columna u={u_col:.2f} m, '
+            f'pan {pan:.2f}, tilt {tilt:.2f}; última corrección con {m.fresh_markers if m else 0}): '
+            'pinto con la última ubicación del pizarrón')
+        return False
 
     def _current_uv(self):
         mapper, tip = self._geometry()

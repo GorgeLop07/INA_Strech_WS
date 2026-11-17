@@ -12,6 +12,10 @@ perception:
     rotate_debug_image: true   # la cámara de la cabeza va girada 90°: se endereza para verla
     board:
       history: 30
+      # Si la base patina, el pizarrón se recoloca con lo visto en los últimos fresh_age s, solo si
+      # son fresh_min_markers ArUco o más (corrección en x, y y giro sobre el piso)
+      fresh_age: 2.0
+      fresh_min_markers: 2
     brush:
       tip_beyond_body: 0.017   # de donde acaba el cuerpo verde a la punta (m)
       body_radius: 0.011
