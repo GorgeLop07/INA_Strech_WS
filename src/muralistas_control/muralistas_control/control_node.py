@@ -113,7 +113,7 @@ class ControlNode(Node):
             # Calculado con el pizarrón de config/mural.yaml: ver head_scan.py
             self.head_scan = head_scan_for(
                 self.layout, wall_distance=p('scan.wall_distance', 0.75).value,
-                camera_height=p('scan.camera_height', 1.30).value,
+                camera_height=self.camera_height,
                 half_fov=tuple(p('scan.half_fov', [21.0, 34.0]).value), margin=p('scan.margin_deg', 8.0).value)
         else:
             scan = p('head_scan', [-1.0, -0.45, -1.57, -0.45, -2.15, -0.45]).value
