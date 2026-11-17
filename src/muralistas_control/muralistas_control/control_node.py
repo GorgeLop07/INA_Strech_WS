@@ -93,6 +93,10 @@ class ControlNode(Node):
         self.ready_pose = dict(zip(
             ['joint_lift', 'wrist_extension', 'joint_wrist_yaw', 'joint_wrist_pitch', 'joint_wrist_roll'],
             p('ready_pose', [0.6, 0.05, 0.0, 0.0, 0.0]).value))
+        # La muñeca solo se manda en la pose inicial; con el peso del marcador y el apoyo el pitch se va
+        # cayendo. Con hold_wrist cada trazo la vuelve a mandar a la ready_pose.
+        self.hold_wrist = p('hold_wrist', True).value
+        self.wrist_hold = {n: v for n, v in self.ready_pose.items() if n.startswith('joint_wrist_')}
         self.layout = MuralLayout.from_dict({k: p(f'mural.{k}', v).value for k, v in MuralLayout().__dict__.items()})
         if p('head_scan_auto', True).value:
             # Calculado con el pizarrón de config/mural.yaml: ver head_scan.py
@@ -292,6 +296,9 @@ class ControlNode(Node):
             if problems:
                 raise RuntimeError('Fuera de alcance: ' + '; '.join(problems))
         names = [self.base_joint, self.lift_joint, self.ext_joint]
+        if self.hold_wrist:
+            names += list(self.wrist_hold)
+            traj = [(t, tuple(joints) + tuple(self.wrist_hold.values())) for t, joints in traj]
         return self._run_trajectory(names, traj, goal_handle)
 
     # --- Acción DrawStroke ----------------------------------------------------
