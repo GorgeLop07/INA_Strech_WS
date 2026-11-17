@@ -1,7 +1,7 @@
 # Cómo probarlo: simulación, robot real y siguientes pasos
 
-Fecha: 15-nov-2026. Esta guía cubre todo lo que se agregó siguiendo la planeación:
-- pizarrón de 2.095 × 1.18 m (medido el 16-nov; parametrizable) con 6 ArUco de 15.5 cm y zona de trabajo de 80 × 60 cm;
+Fecha: 15-nov-2026 (medidas del cristal del Lab 345 actualizadas el 16-nov). Esta guía cubre todo lo que se agregó siguiendo la planeación:
+- pizarrón de cristal de 2.095 m de ancho con 6 ArUco de 15.5 cm (parametrizable) y zona de trabajo de 80 × 60 cm a la derecha de la junta del cristal;
 - barrido de cabeza calculado con las medidas del pizarrón, con el brazo abajo para que no tape;
 - marcador azul, sin colores;
 - modos de interacción S, J1, J2 y J3 y niveles de asistencia;
@@ -19,7 +19,7 @@ Fecha: 15-nov-2026. Esta guía cubre todo lo que se agregó siguiendo la planeac
 | Pruebas unitarias | ✅ Pasan las 49 |
 | Compilación | ✅ Compilan los 8 paquetes |
 | Launch | ✅ Arman los nodos correctos en cada combinación (revisado sin lanzarlos) |
-| Simulación, S1 (arranque con el pizarrón nuevo) | ✅ Pasó con 240 × 118 (15-nov, corrida de Jorge): 6 de 6 al primer barrido. ⏳ Falta repetirla con las medidas reales (209.5 × 118, ArUco de 15.5 cm) |
+| Simulación, S1 (arranque con el pizarrón nuevo) | ✅ Pasó con 240 × 118 (15-nov, corrida de Jorge): 6 de 6 al primer barrido. ⏳ Falta repetirla con las medidas del cristal (2.095 × 1.01, 3 poses de barrido) |
 | Simulación, S2 a S5 | ✅ Pasaron (15-nov) con el pizarrón de 1.5 × 1.0; conviene repetir S2 y S3 con la zona nueva (casillas de 20 cm, plantillas de 40 cm) |
 | Simulación, S6 (J3 con el Pro Controller) y S7 (calibración) | ✅ Probadas a mano por Jorge (15-nov); salió un error en el retardo del switch, ya corregido |
 | Pantallas nuevas (fantasma, calibración) | ✅ Abiertas en S4–S7 (capturas en `docs/`) |
@@ -53,9 +53,10 @@ ros2 launch muralistas_bringup sim_mural.launch.py
 ```
 
 **Qué esperar:**
-- En MuJoCo, un pizarrón de 2.095 × 1.18 m con 6 ArUco de 15.5 cm (las 4 esquinas y el centro de abajo y de arriba), centrado frente al robot. Su borde de abajo queda a 0.20 m (`bottom_height`), así que la zona de trabajo (80 × 60 cm) cae entre 0.45 y 1.05 m de alto.
-- En el log del control: `Barrido de cabeza (pan, tilt): (-0.67, -0.35), (-1.57, -0.93), (-1.57, -0.03), (-2.47, -0.35)`. Son 4 poses: esquinas de la izquierda, centro abajo, centro arriba y esquinas de la derecha.
-- En unos 40 s el robot hace su pose inicial, **baja el elevador a 0.2 m** y recoge el brazo (para no tapar los ArUco de abajo), barre la cabeza por esas 4 poses y regresa el brazo a la pose de trabajo. Calibra el pincel y el estado queda en **"listo"**.
+- En MuJoCo, un pizarrón de 2.095 × 1.01 m con 6 ArUco de 15.5 cm (las 4 esquinas y el centro de abajo y de arriba), centrado frente al robot. Es el rectángulo que forman los ArUco del cristal (ver F1): los de abajo empiezan a 21.5 cm del piso y los de arriba terminan a 118 cm.
+- La zona de trabajo (80 × 60 cm) queda a la derecha del centro, entre 0.3975 y 0.9975 m del piso, para no cruzar la junta del cristal.
+- En el log del control: `Barrido de cabeza (pan, tilt): (-0.67, -0.42), (-1.57, -0.58), (-2.47, -0.42)`. Son 3 poses: izquierda, centro y derecha; cada una ve los ArUco de abajo y de arriba de esa columna.
+- En unos 40 s el robot hace su pose inicial, **baja el elevador a 0.2 m** y recoge el brazo (para no tapar los ArUco de abajo), barre la cabeza por esas 3 poses y regresa el brazo a la pose de trabajo. Calibra el pincel y el estado queda en **"listo"**.
 - La pantalla del barrido empieza en **"Elige una figura"**, sin pregunta de color.
 
 **Para revisar en otra terminal:**
@@ -283,6 +284,7 @@ python3 -c "import cv2; print(cv2.__version__, hasattr(cv2.aruco, 'ArucoDetector
 
 - **Sin simulación:** en el robot no se compila `muralistas_sim` (necesita MuJoCo). `--packages-ignore` hace como si no existiera; `muralistas_bringup` ya no depende de él.
 - **OpenCV:** la última línea debe decir 4.7 o más y `True`. Si dice `False`, la percepción no puede correr en el robot y se corre en la laptop con `parte:=laptop`; lo vemos en ese momento.
+- **No hagas `source entorno.sh` en el robot:** es para la laptop. Pone `PYTHONNOUSERSITE=1`, que esconde `stretch_body` (instalado en `~/.local`), y el driver falla con `No module named 'stretch_body'`. Si pasó, `unset PYTHONNOUSERSITE` o abre otra terminal.
 - **Red:** en la laptop y en el robot, el mismo `export ROS_DOMAIN_ID=<n>`. Con el driver corriendo, `ros2 topic list` en la laptop debe mostrar `/joint_states` del robot.
 
 ### F1. El pizarrón físico (no se mueve nada)
@@ -295,11 +297,13 @@ python3 -c "import cv2; print(cv2.__version__, hasattr(cv2.aruco, 'ArucoDetector
 
     Salen 6 hojas con cuadros de 15.5 cm (`marker_size`). Imprime al 100% y mide el cuadro negro: lo que mida va en `marker_size` (los impresos el 16-nov miden 15.5 cm).
 2. **Pegarlos** con su centro a 10 cm (`margin/2`) del borde de abajo o de arriba, en sentido antihorario: ID 0 abajo a la izquierda, 1 abajo al centro, 2 abajo a la derecha, 3 arriba a la derecha, 4 arriba al centro, 5 arriba a la izquierda. Los de las esquinas van también a 10 cm del borde lateral; los del centro, a la mitad del ancho (1.0475 m). Cada hoja dice dónde va.
+    - **Como quedaron en el cristal del Lab 345 (16-nov):** del piso al borde de abajo del cuadro negro de los ArUco de abajo, 21.5 cm; del piso al borde de arriba del cuadro negro de los de arriba, 118 cm (centros a 29.25 y 110.25 cm). En `mural.yaml` eso es `bottom_height: 0.1925` y `height: 1.01`: el "pizarrón" del código es el rectángulo con los centros de los ArUco a 10 cm de sus bordes. Si los vuelves a pegar, recalcula: `bottom_height` = centro de abajo − 0.10; `height` = (centro de arriba − centro de abajo) + 0.20.
     - **Orientación:** pega cada hoja derecha, con la regla y el texto *debajo* del cuadro y leyéndose horizontal. El estimador usa qué esquina del marcador es cuál; un marcador girado 90° descuadra el pizarrón.
     - **Blanco alrededor:** el cuadro negro necesita blanco a su alrededor, idealmente 2.5 cm por lado. Si la superficie es oscura o de cristal (como el azul del 16-nov), pega cada marcador sobre una hoja blanca entera para no quedarte con 1 cm de borde.
     - **Cristal:** cuida que no se refleje una lámpara o ventana encima de un marcador. La cámara de profundidad casi no ve el vidrio: `check_plane` puede salir raro (no detiene nada), y el azul del fondo puede confundir la detección de la punta azul en la calibración.
-3. **Medir la altura del pizarrón.** Mide la altura del borde de abajo sobre el piso y ponla en `bottom_height` en `config/mural.yaml`. Con eso la zona de trabajo se coloca sola entre 0.45 y 1.05 m del piso. Si el pizarrón no mide 2.095 × 1.18 m, sigue la sección 3.
-4. **Colocar el robot** paralelo al pizarrón, centrado a lo ancho, con el centro de la base a 0.75 m de la pared (`scan.wall_distance` en `config/control.yaml`; si lo pones a otra distancia, cámbialo ahí).
+3. **Zona de trabajo.** Va entre las dos filas de ArUco (centro a `work_center_z: 0.6975` m del piso, de 0.3975 a 0.9975 m) y a la derecha de la junta del cristal (`work_center_u: 1.495`: de 1.095 a 1.895 m desde el borde izquierdo, 4.75 cm después de la junta). Si cambian los ArUco o la junta, se ajustan esos dos valores en `config/mural.yaml`.
+4. **Colocar el robot** paralelo al pizarrón, con la pared a su derecha, centrado a lo ancho (frente a la junta, a 1.0475 m del borde izquierdo) y con el centro de la base a 0.75 m de la pared (`scan.wall_distance` en `config/control.yaml`; si lo pones a otra distancia, cámbialo ahí). Para dibujar, la base se recorre sola hacia la zona.
+    - Para acomodarlo con el control: `ros2 run joy joy_node` y `ros2 run muralistas_control teleop_base` (joystick izquierdo avanza, derecho gira; ciérralo antes de F3). No probado todavía en el robot.
 
 ### F2. Driver y cámara (no se mueve nada)
 
@@ -341,7 +345,7 @@ ros2 launch muralistas_bringup real_mural.launch.py parte:=robot
 
 **Qué se mueve:**
 - El robot va a la pose inicial (elevador 0.6 m, brazo casi recogido, muñeca derecha).
-- Baja el elevador a 0.2 m, barre la cabeza (4 poses con el pizarrón de 209.5 × 118) y regresa el brazo.
+- Baja el elevador a 0.2 m, barre la cabeza (3 poses: `(-0.67, -0.42), (-1.57, -0.58), (-2.47, -0.42)`) y regresa el brazo.
 - Si ve el marcador, calibra la punta.
 - La base no se mueve.
 
@@ -395,7 +399,7 @@ Es el mismo flujo que S3 y S5. El pizarrón no se borra solo: entre intentos lo 
 
 ## 3. Si el pizarrón cambia de tamaño
 
-El pizarrón de pruebas es de **2.095 × 1.18 m** (con ArUco de 15.5 cm) y así viene configurado. Para otro tamaño casi todo se ajusta solo: la percepción, la simulación, el planeador, las pantallas, el control y **el barrido de la cabeza** salen de `config/mural.yaml`. Los ArUco del centro se recolocan solos a la mitad del ancho, y la simulación centra el pizarrón y lo pone a `bottom_height`.
+El pizarrón de pruebas es el cristal del Lab 345: **2.095 × 1.01 m** entre ArUco (de 15.5 cm), con el borde a 0.1925 m, y así viene configurado. Para otro tamaño casi todo se ajusta solo: la percepción, la simulación, el planeador, las pantallas, el control y **el barrido de la cabeza** salen de `config/mural.yaml`. Los ArUco del centro se recolocan solos a la mitad del ancho, y la simulación centra el pizarrón y lo pone a `bottom_height`.
 
 ### Lo que hay que cambiar
 
@@ -403,8 +407,8 @@ En `config/mural.yaml`:
 
 ```yaml
       width: 2.095          # ancho (m)
-      height: 1.18          # alto (m)
-      bottom_height: 0.20   # altura del borde de abajo sobre el piso (m), medida en el salón
+      height: 1.01          # alto (m)
+      bottom_height: 0.1925 # altura del borde de abajo sobre el piso (m), medida en el salón
 ```
 
 Y en `config/control.yaml`, solo si el robot no queda a 0.75 m de la pared:
@@ -418,7 +422,7 @@ Después: `mbuild && source entorno.sh` y S1 (o F3 en el robot). En el log salen
 
 ### Lo que no cambia solo (y por qué)
 
-- **La zona de trabajo se queda en 80 × 60 cm**, centrada a lo ancho y con su centro a 0.75 m del piso (`work_center_z`). No crece con el pizarrón porque depende del niño y del robot:
+- **La zona de trabajo se queda en 80 × 60 cm**, con su centro donde digan `work_center_z` (altura sobre el piso) y `work_center_u` (−1 = centrada a lo ancho; en el cristal va a la derecha de la junta). No crece con el pizarrón porque depende del niño y del robot:
     - el elevador lleva la punta de ~0.12 a ~1.20 m del piso, así que la zona termina en 1.05 m para dejar margen;
     - horizontalmente la mueve la base, y entre más se mueve, más deriva acumula la odometría hasta volver a ver un ArUco;
     - la cuadrícula del barrido (4 × 3) da casillas de 20 cm; más columnas alargan el barrido del switch.
@@ -432,6 +436,7 @@ Después: `mbuild && source entorno.sh` y S1 (o F3 en el robot). En el log salen
 
 | Pizarrón | Poses (pan, tilt) |
 |---|---|
+| 2.095 × 1.01, borde a 0.1925 m, marcadores de 15.5 cm (cristal Lab 345) | (−0.67, −0.42), (−1.57, −0.58), (−2.47, −0.42) |
 | 2.095 × 1.18, borde a 0.20 m, marcadores de 15.5 cm | (−0.67, −0.35), (−1.57, −0.93), (−1.57, −0.03), (−2.47, −0.35) |
 | 2.40 × 1.18, borde a 0.20 m | (−0.60, −0.32), (−1.57, −0.93), (−1.57, −0.03), (−2.54, −0.32) |
 | 2.00 × 1.50, borde a 0.10 m | 6 poses: izquierda, centro y derecha, cada una abajo y arriba |
@@ -447,21 +452,21 @@ Para poner las poses a mano: `head_scan_auto: false` y la lista en `head_scan`.
 
 - **J3 continuo** (opcional en la planeación): mantener el switch para pintar mientras el joystick dibuja varios trazos de una vez. **No está implementado**; J3 funciona igual que J2.
 - **Borrar en J1 en modo libre** (quieto en el inicio del fantasma) choca con dibujar una figura cerrada. Para cerrar una figura en J1, hay que parar a 2 cm o más del inicio.
-- **Altura del pizarrón:** el primer pizarrón real empezaba a 0.925 m del piso, y el robot solo alcanza con la punta hasta ~1.19 m (elevador a 1.08 m + 0.115 m de la pinza): no cabía la zona de trabajo. Se va a probar con otro de 209.5 × 118 que empieza desde el piso. `bottom_height` se queda en 0.20, como en la simulación. Si el real empieza en 0, la zona se recorre sola hacia abajo para no pisar el margen y queda entre ~0.38 y 0.98 m del piso (dentro del alcance). Regla: el borde de abajo del pizarrón tiene que estar a 0.45 m o menos.
-- **El pizarrón de 240 × 118 pasó S1 en simulación** (6 de 6). Falta repetir S1 con las medidas reales (209.5 × 118, ArUco de 15.5 cm), S2–S5 con la zona nueva y todo en el robot.
+- **Altura del pizarrón:** el primer pizarrón real empezaba a 0.925 m del piso, y el robot solo alcanza con la punta hasta ~1.19 m (elevador a 1.08 m + 0.115 m de la pinza): no cabía la zona de trabajo. Se cambió al cristal del Lab 345, que empieza desde el piso; con los ArUco como quedaron pegados, la zona va de 0.3975 a 0.9975 m (dentro del alcance). Regla: el borde de abajo del pizarrón tiene que estar a 0.45 m o menos.
+- **El pizarrón de 240 × 118 pasó S1 en simulación** (6 de 6). Falta repetir S1 con las medidas del cristal (3 poses de barrido, zona a la derecha de la junta), S2–S5 con la zona nueva y todo en el robot.
 - **Los umbrales de la calibración, la asistencia y las estrellas** son propuestas de la planeación: falta validarlos con terapeutas.
 - **Las métricas de suavidad** se calculan sobre todo el intento, no sobre cada movimiento. Con el teclado no significan nada.
 - **La tinta real** no se mide con la cámara: se compara el fantasma contra la punta del robot.
 
 ## 5. Siguientes pasos
 
-1. **S1 con el pizarrón de 209.5 × 118:** que el barrido vea los 6 ArUco. Luego repetir S2 y S3 con la zona nueva y las métricas de precisión (las del README son del papel de 3 m).
+1. **S1 con las medidas del cristal:** que el barrido de 3 poses vea los 6 ArUco. Luego repetir S2 y S3 con la zona nueva y las métricas de precisión (las del README son del papel de 3 m).
 2. **Robot real, F0 a F6.** Ahí se miden los valores que faltan:
     - `tool_offset` del plumón;
     - `press_depth`;
     - el HSV del azul con la luz del salón;
     - la altura del pizarrón (`bottom_height`) y la distancia del robot a la pared (`scan.wall_distance`).
-3. **Commit** del pizarrón de 209.5 × 118, los 6 ArUco, el barrido calculado y esta guía (sin coautor). Lo anterior ya está en `c6a0078`.
+3. ~~Commit de las medidas del cristal~~: ya están en `main` (`faa310f`, `dbef6cc`, `8c6be4b`).
 4. **Pendientes de la planeación** que no puedo decidir yo:
     - terapeuta que valide umbrales y duración;
     - nivel MACS de cada niño;

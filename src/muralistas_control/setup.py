@@ -21,6 +21,7 @@ setup(
             'control = muralistas_control.control_node:main',
             'prueba_articulaciones = muralistas_control.prueba_articulaciones:main',
             'teleop_base = muralistas_control.teleop_base:main',
+            'pinza = muralistas_control.pinza:main',
         ],
     },
 )
